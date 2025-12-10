@@ -1,0 +1,295 @@
+ * Serving Flask app 'phantomrat_c2'
+ * Debug mode: off
+Permission denied
+ * Serving Flask app 'phantomrat_c2'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://141.105.71.196:5000
+Press CTRL+C to quit
+127.0.0.1 - - [08/Dec/2025 05:14:09] "GET /dashboard HTTP/1.1" 200 -
+ * Serving Flask app 'phantomrat_c2'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://141.105.71.196:5000
+Press CTRL+C to quit
+127.0.0.1 - - [08/Dec/2025 05:23:13] "POST /beacon HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 05:25:45] "POST /beacon HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 05:30:29] "POST /beacon HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 05:31:06] "POST /beacon HTTP/1.1" 404 -
+ * Serving Flask app 'phantomrat_c2'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://141.105.71.196:5000
+Press CTRL+C to quit
+127.0.0.1 - - [08/Dec/2025 22:15:31] "POST /beacon HTTP/1.1" 404 -
+ * Serving Flask app 'phantomrat_c2'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://141.105.71.196:5000
+Press CTRL+C to quit
+127.0.0.1 - - [08/Dec/2025 22:57:46] "POST /beacon HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 22:58:06] "POST /beacon HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 23:00:00] "POST /beacon HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 23:06:10] "GET /login.asp HTTP/1.0" 404 -
+141.105.71.196 - - [08/Dec/2025 23:06:12] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [08/Dec/2025 23:07:54] "POST /api/v1/Data HTTP/1.0" 404 -
+127.0.0.1 - - [08/Dec/2025 23:11:26] "POST / HTTP/1.0" 404 -
+127.0.0.1 - - [08/Dec/2025 23:24:11] "GET / HTTP/1.0" 404 -
+127.0.0.1 - - [08/Dec/2025 23:30:58] "GET / HTTP/1.0" 404 -
+127.0.0.1 - - [08/Dec/2025 23:38:54] "GET / HTTP/1.0" 404 -
+179.43.159.226 - - [08/Dec/2025 23:42:04] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [08/Dec/2025 23:42:04] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [08/Dec/2025 23:46:53] "GET / HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 00:14:18] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 00:14:18] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 00:19:46] "GET / HTTP/1.0" 404 -
+ * Serving Flask app 'phantomrat_c2'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://141.105.71.196:5000
+Press CTRL+C to quit
+127.0.0.1 - - [09/Dec/2025 00:32:39] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 00:34:11] "POST /api/v1/Data HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 00:36:30] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 00:39:21] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 00:42:02] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 00:50:53] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 01:15:20] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 01:15:20] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 01:52:49] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 01:54:00] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 01:55:31] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 01:55:31] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 01:59:16] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 02:01:02] "GET / HTTP/1.0" 200 -
+193.34.213.150 - - [09/Dec/2025 02:20:39] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 02:24:08] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 02:58:05] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 02:58:06] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 03:17:25] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 03:20:23] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 03:20:23] "GET /favicon.ico HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 03:24:31] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 03:24:31] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 03:27:13] "GET /dashboard HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:29:16] "GET /dashboard HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:50:22] "GET /dashboard HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:18] "GET /dashboard HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:30] "GET / HTTP/1.0" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "POST /sdk HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "GET / HTTP/1.0" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "GET / HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "GET /nmaplowercheck1765252350 HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "GET /evox/about HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "GET /HNAP1 HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:31] "GET / HTTP/1.0" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:32] "GET / HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:34] "POST /register HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 03:52:36] "POST /status HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:39] "GET /task HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:41] "POST /api/v1/data HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:53] "POST /api/v1/data HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:52:59] "POST /api/v1/data HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 03:53:03] "POST /api/v1/data HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 04:04:06] "GET /admin/config.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:04:26] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 04:04:26] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 04:28:16] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 04:33:07] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 04:33:07] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 04:34:57] "GET /dispatch.asp HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:06] "POST /hello.world?%ADd+allow_url_include%3d1+%ADd+auto_prepend_file%3dphp://input HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:06] "POST /?%ADd+allow_url_include%3d1+%ADd+auto_prepend_file%3dphp://input HTTP/1.0" 405 -
+127.0.0.1 - - [09/Dec/2025 04:42:06] "GET /vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:07] "GET /vendor/phpunit/phpunit/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:07] "GET /vendor/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:07] "GET /vendor/phpunit/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:08] "GET /vendor/phpunit/phpunit/LICENSE/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:09] "GET /vendor/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:09] "GET /phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:09] "GET /phpunit/phpunit/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:10] "GET /phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:10] "GET /phpunit/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:11] "GET /lib/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:11] "GET /lib/phpunit/phpunit/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:11] "GET /lib/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:12] "GET /lib/phpunit/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:12] "GET /lib/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:13] "GET /laravel/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:13] "GET /www/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:13] "GET /ws/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:13] "GET /yii/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:14] "GET /zend/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:14] "GET /ws/ec/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:14] "GET /V2/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:14] "GET /tests/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:15] "GET /test/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:15] "GET /testing/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:15] "GET /api/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:15] "GET /demo/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:16] "GET /cms/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:16] "GET /crm/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:16] "GET /admin/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:17] "GET /backup/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:17] "GET /blog/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:17] "GET /workspace/drupal/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:18] "GET /panel/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:18] "GET /public/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:18] "GET /apps/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:19] "GET /app/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:19] "GET /index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=md5&vars[1][]=Hello HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:20] "GET /public/index.php?s=/index/\\think\\app/invokefunction&function=call_user_func_array&vars[0]=md5&vars[1][]=Hello HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:20] "GET /index.php?lang=../../../../../../../../usr/local/lib/php/pearcmd&+config-create+/&/<?echo(md5("hi"));?>+/tmp/index1.php HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:20] "GET /index.php?lang=../../../../../../../../tmp/index1 HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 04:42:21] "GET /containers/json HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 05:02:23] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 05:02:23] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 05:12:23] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 05:15:11] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 05:35:12] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 05:42:10] "GET / HTTP/1.0" 200 -
+205.210.31.89 - - [09/Dec/2025 05:54:48] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 06:03:38] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 06:07:00] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 06:07:00] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 06:38:25] "GET /squid-internal-mgr/cachemgr.cgi HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 06:44:54] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 06:44:54] "GET /.git/config HTTP/1.1" 404 -
+149.50.96.133 - - [09/Dec/2025 06:47:31] "POST / HTTP/1.1" 405 -
+127.0.0.1 - - [09/Dec/2025 06:54:46] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 07:12:10] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 07:16:26] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 07:16:26] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 07:28:08] "GET /page/style/index.css HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 07:47:34] "POST / HTTP/1.0" 405 -
+179.43.159.226 - - [09/Dec/2025 07:50:54] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 07:52:41] "GET / HTTP/1.0" 200 -
+3.132.23.201 - - [09/Dec/2025 07:53:33] "GET / HTTP/1.1" 200 -
+3.132.23.201 - - [09/Dec/2025 07:55:58] "GET / HTTP/1.1" 200 -
+3.132.23.201 - - [09/Dec/2025 07:57:05] code 400, message Bad request version ('À\x14À')
+3.132.23.201 - - [09/Dec/2025 07:57:05] "\x16\x03\x01\x00{\x01\x00\x00w\x03\x03\x86\x8f÷\x05ZÆv\x14\x87¶$:¡\x0f§D/g0\x1d±\x1bKÄ2c"³ÅH\x7f}\x00\x00\x1aÀ/À+À\x11À\x07À\x13À\x09À\x14À" HTTPStatus.BAD_REQUEST -
+3.132.23.201 - - [09/Dec/2025 07:58:34] code 400, message Bad request syntax ('SSH-2.0-Go')
+3.132.23.201 - - [09/Dec/2025 07:58:34] "SSH-2.0-Go" HTTPStatus.BAD_REQUEST -
+3.132.23.201 - - [09/Dec/2025 08:00:10] code 400, message Bad request version ('À\x14À')
+3.132.23.201 - - [09/Dec/2025 08:00:10] "\x16\x03\x01\x00{\x01\x00\x00w\x03\x03ñÛW Ç§\x12OÕIÊîÏ\x96½k\x9a´ì\x06\x9bZíË\x93gI\x9d\x90Zn\x04\x00\x00\x1aÀ/À+À\x11À\x07À\x13À\x09À\x14À" HTTPStatus.BAD_REQUEST -
+127.0.0.1 - - [09/Dec/2025 08:05:22] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 08:21:56] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 08:26:31] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 08:26:31] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 08:26:32] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 08:41:12] "GET /robots.txt HTTP/1.0" 404 -
+164.92.157.18 - - [09/Dec/2025 08:43:58] code 400, message Bad request version ('À\x14À')
+164.92.157.18 - - [09/Dec/2025 08:43:58] "\x16\x03\x01\x00{\x01\x00\x00w\x03\x03\x96ý.mÓg?#\x89Ù\x1c\x84]\x0b10í¹u/÷\x8cH\x9fúÉLn\x15\x97<-\x00\x00\x1aÀ/À+À\x11À\x07À\x13À\x09À\x14À" HTTPStatus.BAD_REQUEST -
+164.92.157.18 - - [09/Dec/2025 08:43:58] code 400, message Bad HTTP/0.9 request type ('\x16\x03\x01\x00{\x01\x00\x00w\x03\x03N\x99\x9e%ìe4\x9e\x99¶|æuá÷#<L\x83Á\x18\x843ÁD`N\x9a\x03\x11i\x1b\x00\x00\x1aÀ/À+À\x11À\x07À\x13À')
+164.92.157.18 - - [09/Dec/2025 08:43:58] "\x16\x03\x01\x00{\x01\x00\x00w\x03\x03N\x99\x9e%ìe4\x9e\x99¶|æuá÷#<L\x83Á\x18\x843ÁD`N\x9a\x03\x11i\x1b\x00\x00\x1aÀ/À+À\x11À\x07À\x13À\x09À\x14À" HTTPStatus.BAD_REQUEST -
+164.92.157.18 - - [09/Dec/2025 08:43:58] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 08:57:23] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 08:57:23] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 09:29:43] "HEAD / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 09:30:13] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 09:30:13] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 09:44:07] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 09:44:14] "GET /.env HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 09:44:14] "GET /api/.env HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 09:44:15] "GET /backend/.env HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 09:44:15] "GET /admin/.env HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 10:04:38] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 10:04:38] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 10:20:53] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 10:29:50] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 10:29:50] "GET /aaa9 HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 10:29:50] "GET /aab9 HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 10:43:39] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 10:46:52] "GET /login.asp HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 11:14:00] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 11:14:00] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 11:25:29] "GET /login.asp HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 11:31:04] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 11:46:13] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 11:46:13] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 11:55:48] "GET /.env HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 11:56:09] "POST / HTTP/1.0" 405 -
+179.43.159.226 - - [09/Dec/2025 12:17:09] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 12:17:09] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 12:53:36] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 12:53:37] "GET /.git/config HTTP/1.1" 404 -
+20.65.193.66 - - [09/Dec/2025 13:00:00] "GET /v2/ HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 13:01:17] "GET /developmentserver/metadatauploader HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 13:29:44] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 13:55:53] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 13:55:53] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 13:56:04] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 14:00:13] "GET /.git/config HTTP/1.0" 404 -
+179.43.159.226 - - [09/Dec/2025 14:33:00] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 14:33:00] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 14:50:18] "GET / HTTP/1.0" 200 -
+179.43.159.226 - - [09/Dec/2025 15:07:13] "GET /.git/config HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 15:07:13] "GET /.git/config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 15:16:24] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 15:58:12] "GET / HTTP/1.0" 200 -
+34.19.56.158 - - [09/Dec/2025 17:07:15] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 17:08:05] "GET / HTTP/1.0" 200 -
+129.222.206.14 - - [09/Dec/2025 17:08:09] "GET /dashboard HTTP/1.1" 200 -
+129.222.206.14 - - [09/Dec/2025 17:08:22] "GET /dashboard HTTP/1.1" 200 -
+34.19.56.158 - - [09/Dec/2025 17:15:10] "GET /logs HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 17:15:10] "GET /logs HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 17:15:17] "GET /logs HTTP/1.1" 404 -
+34.19.56.158 - - [09/Dec/2025 17:15:40] "GET /logs HTTP/1.1" 404 -
+141.105.71.196 - - [09/Dec/2025 17:16:51] "GET /logs HTTP/1.1" 404 -
+141.105.71.196 - - [09/Dec/2025 17:16:51] "GET /logs HTTP/1.1" 404 -
+141.105.71.196 - - [09/Dec/2025 17:18:19] "GET /logs HTTP/1.1" 404 -
+141.105.71.196 - - [09/Dec/2025 17:18:49] "GET /logs HTTP/1.1" 404 -
+127.0.0.1 - - [09/Dec/2025 17:31:29] "POST /api/v1/Data HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 17:35:51] "POST / HTTP/1.0" 405 -
+127.0.0.1 - - [09/Dec/2025 17:38:59] "POST /path_from_config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 17:44:01] "POST /path_from_config HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 17:45:25] "GET /nginx_status HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 17:45:25] "GET /server-status HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 17:45:25] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 17:45:25] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 17:46:39] "HEAD / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 17:46:40] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 17:46:40] "POST / HTTP/1.0" 405 -
+127.0.0.1 - - [09/Dec/2025 17:46:40] "PUT / HTTP/1.0" 405 -
+127.0.0.1 - - [09/Dec/2025 17:46:40] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 18:12:21] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 18:18:32] "GET /robots.txt HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 18:41:51] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 18:50:39] "GET /ReportServer HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 20:11:17] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 20:11:18] "GET /favicon.ico HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 20:11:32] "GET /wiki HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 20:19:50] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 20:21:54] "GET /druid/index.html HTTP/1.0" 404 -
+205.210.31.186 - - [09/Dec/2025 20:39:31] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 20:40:53] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 20:41:34] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 20:41:34] "GET /favicon.ico HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 21:40:42] "GET /robots.txt HTTP/1.0" 404 -
+198.235.24.124 - - [09/Dec/2025 21:41:45] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [09/Dec/2025 22:18:19] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 22:27:39] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 22:39:00] "GET /index.asp HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 22:53:42] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 23:19:16] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 23:28:22] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 23:31:30] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [09/Dec/2025 23:31:33] "GET /favicon.ico HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 23:31:48] "GET /robots.txt HTTP/1.0" 404 -
+127.0.0.1 - - [09/Dec/2025 23:35:47] "POST / HTTP/1.0" 405 -
+127.0.0.1 - - [09/Dec/2025 23:55:30] "GET / HTTP/1.0" 200 -
+127.0.0.1 - - [10/Dec/2025 00:09:59] "POST / HTTP/1.0" 405 -
+127.0.0.1 - - [10/Dec/2025 00:40:54] "GET / HTTP/1.0" 200 -
+142.93.132.33 - - [10/Dec/2025 00:58:13] "GET / HTTP/1.1" 200 -
+142.93.132.33 - - [10/Dec/2025 00:58:13] "GET /favicon.ico HTTP/1.1" 404 -
+141.105.71.196 - - [10/Dec/2025 01:00:48] "GET /dashboard HTTP/1.1" 200 -

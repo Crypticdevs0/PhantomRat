@@ -1,0 +1,42 @@
+	{
+  "http-get": {
+    "client": {
+      "header": {
+        	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+      },
+      "uri": "/api/v1/update",
+      "verb": "GET"
+    },
+    "server": {
+      "header": {
+        "Content-Type": "application/json"
+      },
+      "output": {
+        "base64": true
+      }
+    }
+  },
+  "http-post": {
+    "client": {
+      "header": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Content-Type": "application/json"
+      },
+      "uri": "/api/v1/data",
+      "verb": "POST"
+    },
+    "server": {
+      "header": {
+        "Content-Type": "application/json"
+      },
+      "output": {
+        "base64": false
+      }
+    }
+  },
+  "sleep": 30,
+  "jitter": 10,
+  "encryption": {
+    "key": "shared_secret_key_32_chars_long"
+  }
+}
