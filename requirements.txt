@@ -40,5 +40,3 @@ python-dotenv>=1.0.0
 
 # Security
 pycryptodomex>=3.18.0
-hashlib
-secrets
