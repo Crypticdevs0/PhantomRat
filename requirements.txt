@@ -12,8 +12,6 @@ scapy>=2.5.0
 netifaces>=0.11.0
 
 # System Operations
-pywin32>=306 (Windows only)
-wmi>=1.5.1 (Windows only)
 pyperclip>=1.8.2
 GPUtil>=1.4.0
 
