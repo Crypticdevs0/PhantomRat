@@ -1,21 +1,46 @@
-# Core Dependencies
-flask==2.3.3
-cryptography==41.0.7
-requests==2.31.0
-psutil==5.9.6
+Flask>=2.3.0
+requests>=2.31.0
+cryptography>=41.0.0
+psutil>=5.9.0
+paramiko>=3.2.0
+pillow>=10.0.0
+pycryptodome>=3.18.0
 
-# Optional (GUI features)
-pyautogui==0.9.54
-opencv-python==4.8.1.78
-pyaudio==0.2.14
-pyperclip==1.8.2
+# Networking & Scanning
+python-nmap>=0.7.1
+scapy>=2.5.0
+netifaces>=0.11.0
 
-# Telegram Bot
-python-telegram-bot==20.5
+# System Operations
+pywin32>=306 (Windows only)
+wmi>=1.5.1 (Windows only)
+pyperclip>=1.8.2
+GPUtil>=1.4.0
 
-# Production Server
-gunicorn==21.2.0
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+pyyaml>=6.0
 
-# Development
-python-dotenv==1.0.0
+# Web/HTTP
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
 
+# GUI/Visualization (Optional)
+pyautogui>=0.9.0
+opencv-python>=4.8.0
+pyaudio>=0.2.11
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.11.0
+
+# Utilities
+colorama>=0.4.0
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+
+# Security
+pycryptodomex>=3.18.0
+hashlib
+secrets

