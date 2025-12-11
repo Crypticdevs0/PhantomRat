@@ -6,6 +6,7 @@ Quick test script for PhantomRAT
 import sys
 import os
 import json
+import pathlib
 
 def check_files():
     """Check if required files exist"""
@@ -30,21 +31,59 @@ def check_files():
 def check_config():
     """Check configuration"""
     print("\n[*] Checking configuration...")
-    
+
     try:
         with open('malleable_profile.json', 'r') as f:
             config = json.load(f)
-        
+
         c2_server = config.get('c2', {}).get('primary', '')
         if c2_server:
             print(f"  ✓ C2 Server: {c2_server}")
         else:
             print("  ⚠ C2 Server not configured in malleable_profile.json")
-        
+
+        telegram_cfg = config.get('notifications', {}).get('telegram', {})
+        bot_token = telegram_cfg.get('bot_token', '') or os.environ.get('TELEGRAM_BOT_TOKEN', '')
+        chat_id = telegram_cfg.get('chat_id', '') or os.environ.get('TELEGRAM_CHAT_ID', '')
+        if bot_token and chat_id and 'YOUR_BOT_TOKEN' not in bot_token and 'YOUR_CHAT_ID' not in chat_id:
+            print("  ✓ Telegram notifications configured")
+        else:
+            print("  ✗ Telegram bot token/chat ID missing or placeholder")
+            return False
+
         return True
     except Exception as e:
         print(f"  ✗ Error reading config: {e}")
         return False
+
+
+def check_credentials():
+    """Ensure dashboard credentials are customized"""
+    print("\n[*] Checking dashboard credentials...")
+    default_password = 'phantomrat'
+    env_password = os.environ.get('PHANTOM_ADMIN_PASSWORD', '')
+    cred_path = pathlib.Path('phantom_admin.json')
+
+    if env_password:
+        if env_password != default_password:
+            print("  ✓ Admin password provided via environment")
+            return True
+        print("  ✗ Admin password uses default value")
+        return False
+
+    if cred_path.exists():
+        try:
+            data = json.loads(cred_path.read_text())
+            stored_password = data.get('password', '')
+            if stored_password and stored_password != default_password:
+                print("  ✓ Admin credential file present with non-default password")
+                return True
+        except Exception as e:
+            print(f"  ✗ Error reading credential file: {e}")
+            return False
+
+    print("  ✗ No admin password configured; set PHANTOM_ADMIN_PASSWORD or create phantom_admin.json")
+    return False
 
 def check_dependencies():
     """Check Python dependencies"""
@@ -95,6 +134,7 @@ def main():
     checks = [
         ("Files", check_files),
         ("Config", check_config),
+        ("Credentials", check_credentials),
         ("Dependencies", check_dependencies)
     ]
     

