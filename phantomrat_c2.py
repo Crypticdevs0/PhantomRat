@@ -117,7 +117,13 @@ FERNET_KEY = derive_fernet_key(load_encryption_key())
 CIPHER = Fernet(FERNET_KEY)
 
 def load_telegram_settings():
-    """Load Telegram notification settings from env or profile."""
+    """
+    Retrieve the Telegram bot token and chat ID used for notifications.
+    
+    Returns:
+        (bot_token, chat_id) (tuple[str, str]): Tuple containing the bot token and chat ID as strings.
+            Each value is an empty string if not configured in environment variables or the profile.
+    """
     env_token = os.environ.get('TELEGRAM_BOT_TOKEN')
     env_chat = os.environ.get('TELEGRAM_CHAT_ID')
     if env_token and env_chat:
@@ -128,7 +134,14 @@ def load_telegram_settings():
 
 
 def load_admin_credentials():
-    """Load bootstrap admin credentials from env, file, or generate securely."""
+    """
+    Determine the bootstrap admin username and password by checking environment variables, a persisted credential file, or by generating and storing a secure password.
+    
+    Checks PHANTOM_ADMIN_USERNAME (defaults to "admin") and PHANTOM_ADMIN_PASSWORD in the environment; if a password is provided there it is returned. If not, attempts to read a JSON credential file at ADMIN_CREDENTIAL_FILE for stored credentials. If no stored password is found, generates a cryptographically secure password, persists it to ADMIN_CREDENTIAL_FILE with file mode 0o600 when possible, and returns the username and generated password.
+    
+    Returns:
+        tuple: (username (str), password (str)) — the admin username and its corresponding password.
+    """
     username = os.environ.get('PHANTOM_ADMIN_USERNAME', 'admin')
     password = os.environ.get('PHANTOM_ADMIN_PASSWORD')
 
@@ -197,7 +210,16 @@ def decrypt_data(encrypted_data):
         return None
 
 def send_telegram(message):
-    """Send notification to Telegram"""
+    """
+    Send a text message to the configured Telegram chat if credentials are available.
+    
+    Parameters:
+        message (str): The message text to send.
+    
+    Notes:
+        This function does nothing if the module-level `BOT_TOKEN` or `CHAT_ID` are not set.
+        Network errors and other exceptions are suppressed; failures are silently ignored.
+    """
     try:
         if not BOT_TOKEN or not CHAT_ID:
             return
@@ -416,6 +438,11 @@ def close_db(error):
         db.close()
 
 def init_db():
+    """
+    Initialize the application's SQLite database schema and ensure a bootstrap admin user exists.
+    
+    Creates the implants, tasks, and users tables if they do not already exist, inserts a default administrator account using credentials returned by load_admin_credentials() when no user with that username is present, and commits the changes. Prints a confirmation message on successful initialization.
+    """
     with app.app_context():
         db = get_db()
         
