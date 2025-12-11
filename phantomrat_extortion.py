@@ -45,9 +45,41 @@ except:
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
 # ==================== ENCRYPTION ====================
+KDF_SALT = b"phantomrat_kdf_salt"
+KDF_ITERATIONS = 200_000
+
+if 'PROFILE' in globals():
+    PROFILE_SALT = PROFILE.get('encryption', {}).get('salt', KDF_SALT)
+    PROFILE_ITERATIONS = PROFILE.get('encryption', {}).get('iterations', KDF_ITERATIONS)
+else:
+    PROFILE_SALT = KDF_SALT
+    PROFILE_ITERATIONS = KDF_ITERATIONS
+
+if not isinstance(PROFILE_SALT, (bytes, bytearray)):
+    PROFILE_SALT = str(PROFILE_SALT).encode()
+
+try:
+    PROFILE_ITERATIONS = int(PROFILE_ITERATIONS)
+except (TypeError, ValueError):
+    PROFILE_ITERATIONS = KDF_ITERATIONS
+
+
+def derive_fernet_key(secret: bytes) -> bytes:
+    if not isinstance(secret, (bytes, bytearray)):
+        secret = str(secret).encode()
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=PROFILE_SALT,
+        iterations=PROFILE_ITERATIONS,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(secret))
+
+
 class PhantomEncryption:
     """Encryption handler compatible with C2 v4.0"""
-    
+
     def __init__(self, key=None):
         if key is None:
             # Generate key from system info
@@ -58,12 +90,8 @@ class PhantomEncryption:
         
         if isinstance(key, str):
             key = key.encode()
-        
-        # Ensure 32 bytes
-        if len(key) < 32:
-            key = key.ljust(32, b'0')[:32]
-        
-        fernet_key = base64.urlsafe_b64encode(key)
+
+        fernet_key = derive_fernet_key(key)
         self.fernet = Fernet(fernet_key)
         self.master_key = key
     
