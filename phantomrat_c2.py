@@ -30,7 +30,46 @@ with open('malleable_profile.json', 'r') as f:
     PROFILE = json.load(f)
 
 ENCRYPTION_KEY = b"phantomrat_32_char_encryption_key_here"
-FERNET_KEY = base64.urlsafe_b64encode(hashlib.sha256(ENCRYPTION_KEY).digest())
+KDF_SALT = b"phantomrat_kdf_salt"
+KDF_ITERATIONS = 200_000
+def derive_fernet_key(secret: bytes) -> bytes:
+    """Derive a Fernet-compatible key using PBKDF2-HMAC-SHA256."""
+    if not isinstance(secret, (bytes, bytearray)):
+        secret = str(secret).encode()
+
+    profile_salt = PROFILE.get('encryption', {}).get('salt', KDF_SALT)
+    if not isinstance(profile_salt, (bytes, bytearray)):
+        profile_salt = str(profile_salt).encode()
+
+    profile_iterations = PROFILE.get('encryption', {}).get('iterations', KDF_ITERATIONS)
+    try:
+        profile_iterations = int(profile_iterations)
+    except (TypeError, ValueError):
+        profile_iterations = KDF_ITERATIONS
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=profile_salt,
+        iterations=profile_iterations,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(secret))
+
+
+def load_encryption_key():
+    """Load a shared encryption key for agent/C2 communication."""
+    env_key = os.environ.get("PHANTOM_ENCRYPTION_KEY")
+    if env_key:
+        return env_key.encode()
+
+    profile_key = PROFILE.get('encryption', {}).get('key')
+    if profile_key:
+        return str(profile_key).encode()
+
+    return ENCRYPTION_KEY
+
+
+FERNET_KEY = derive_fernet_key(load_encryption_key())
 CIPHER = Fernet(FERNET_KEY)
 
 BOT_TOKEN = '8441637477:AAF4yVWTmXniWE8WYdkLiS5WAsd0vE43qk4'
