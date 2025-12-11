@@ -49,31 +49,41 @@ def check_config():
 def check_dependencies():
     """Check Python dependencies"""
     print("\n[*] Checking dependencies...")
-    
+
+    missing = []
+
     try:
         import flask
         print(f"  ✓ Flask: {flask.__version__}")
     except ImportError:
         print("  ✗ Flask - MISSING")
-    
+        missing.append("flask")
+
     try:
         import requests
         print(f"  ✓ requests: {requests.__version__}")
     except ImportError:
         print("  ✗ requests - MISSING")
-    
+        missing.append("requests")
+
     try:
         import cryptography
         print(f"  ✓ cryptography: {cryptography.__version__}")
     except ImportError:
         print("  ✗ cryptography - MISSING")
-    
+        missing.append("cryptography")
+
     try:
         import psutil
         print(f"  ✓ psutil: {psutil.__version__}")
     except ImportError:
         print("  ✗ psutil - MISSING")
-    
+        missing.append("psutil")
+
+    if missing:
+        print(f"\n[-] Missing dependencies: {', '.join(missing)}")
+        return False
+
     return True
 
 def main():

