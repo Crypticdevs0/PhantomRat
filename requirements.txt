@@ -12,3 +12,71 @@ python-dotenv>=1.0.0
 scapy>=2.5.0
 netifaces>=0.11.0
 tqdm>=4.65.0
+
+# boto3
+
+The AWS SDK for Python (Boto3) provides a Python API for AWS infrastructure services.
+
+## Installation
+
+```bash
+pip install boto3
+```
+
+Or via apt (in some environments):
+
+```bash
+apt install python3-boto3
+```
+
+## Usage
+
+### Python API
+
+```python
+import boto3
+
+# Create a client
+s3 = boto3.client('s3', region_name='us-east-1')
+
+# List buckets
+response = s3.list_buckets()
+print(response)
+
+# Make a request
+result = s3.get_object(Bucket='my-bucket', Key='my-key')
+print(result)
+```
+
+### With Proxies
+
+```python
+import boto3
+from botocore.config import Config
+
+config = Config(proxies={'https': 'http://proxy.example.com:8080'})
+client = boto3.client('s3', config=config)
+```
+
+## Features
+
+- Comprehensive AWS service support
+- Automatic credential handling (IAM, profiles, etc.)
+- Error handling and retries
+- Resource and client interfaces
+- Pagination and streaming
+
+## Requirements
+
+- Python 3.8+
+- botocore
+- jmespath
+- s3transfer
+
+## License
+
+Apache License 2.0
+
+## Contributing
+
+Contributions are welcome! See the [AWS SDK for Python repository](https://github.com/boto/boto3) on GitHub.
