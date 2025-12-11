@@ -1,18 +1,30 @@
 {
-  "version": "4.0",
+  "version": "2026.1",
+  "profile_year": 2026,
   "c2": {
     "primary": "http://localhost:8000",
     "fallback": [],
     "connection_timeout": 30,
-    "retry_attempts": 3
+    "retry_attempts": 3,
+    "verify_ssl": true,
+    "mask_host": "",
+    "sni": "",
+    "beacon_jitter_min": 15,
+    "beacon_jitter_max": 45
   },
   "encryption": {
-    "key": "PBKDF2-HMAC-SHA256",
-    "algorithm": "AES-256-CBC"
+    "key": "phantomrat_32_char_encryption_key_here",
+    "algorithm": "PBKDF2-HMAC-SHA256",
+    "iterations": 200000
   },
   "security": {
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.5481.192 Safari/537.36",
     "obfuscation": true
+  },
+  "performance": {
+    "compression": true,
+    "chunk_size": 8192,
+    "max_file_size": "25MB"
   },
   "modules": {
     "enabled": [
